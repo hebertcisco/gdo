@@ -1,15 +1,9 @@
-import gdo/driver.{
-  type Capability, SupportsLastInsertId, SupportsNamedParameters,
-  SupportsPositionalParameters, SupportsTransactions,
-}
+import gdo/driver
+
+pub const sqlite_driver = driver.Sqlite
 
 pub const driver_name = "sqlite"
 
-pub fn capabilities() -> List(Capability) {
-  [
-    SupportsTransactions,
-    SupportsLastInsertId,
-    SupportsPositionalParameters,
-    SupportsNamedParameters,
-  ]
+pub fn capabilities() -> List(driver.Capability) {
+  driver.capabilities(sqlite_driver)
 }
