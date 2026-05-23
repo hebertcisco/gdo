@@ -1,3 +1,4 @@
+import gdo/decode
 import gdo/driver
 import gdo/driver/registry
 import gdo/error.{type Error, InvalidConfiguration}
@@ -152,6 +153,11 @@ pub fn prepare(
   }
 }
 
+pub fn close(connection: Connection) -> Result(Nil, Error) {
+  let Connection(contract:, connection_state:, ..) = connection
+  driver.close(contract, connection_state)
+}
+
 pub fn exec(
   connection: Connection,
   sql: String,
@@ -181,6 +187,30 @@ pub fn query_all(
 ) -> Result(result.QueryResult, Error) {
   case prepare(connection, sql) {
     Ok(prepared) -> statement.query_all(prepared, params)
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_one_as(
+  connection: Connection,
+  sql: String,
+  params: List(Param),
+  using decoder: decode.Decoder(a),
+) -> Result(Option(a), Error) {
+  case prepare(connection, sql) {
+    Ok(prepared) -> statement.query_one_as(prepared, params, using: decoder)
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_all_as(
+  connection: Connection,
+  sql: String,
+  params: List(Param),
+  using decoder: decode.Decoder(a),
+) -> Result(List(a), Error) {
+  case prepare(connection, sql) {
+    Ok(prepared) -> statement.query_all_as(prepared, params, using: decoder)
     Error(error) -> Error(error)
   }
 }
