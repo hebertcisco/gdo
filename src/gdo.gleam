@@ -2,7 +2,11 @@
 
 import gdo/connection
 import gdo/error.{type Error}
+import gdo/result
+import gdo/row
 import gdo/statement
+import gdo/value.{type Param}
+import gleam/option.{type Option}
 
 pub const package_name = "gdo"
 
@@ -20,4 +24,37 @@ pub fn open_sqlite(database: String) -> Result(connection.Connection, Error) {
 
 pub fn prepare(sql: String) -> Result(statement.Statement, Error) {
   statement.prepare(sql)
+}
+
+pub fn exec_sqlite(
+  database: String,
+  sql: String,
+  params: List(Param),
+) -> Result(result.ExecutionResult, Error) {
+  case open_sqlite(database) {
+    Ok(connection) -> connection.exec(connection, sql, params)
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_one_sqlite(
+  database: String,
+  sql: String,
+  params: List(Param),
+) -> Result(Option(row.Row), Error) {
+  case open_sqlite(database) {
+    Ok(connection) -> connection.query_one(connection, sql, params)
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_all_sqlite(
+  database: String,
+  sql: String,
+  params: List(Param),
+) -> Result(result.QueryResult, Error) {
+  case open_sqlite(database) {
+    Ok(connection) -> connection.query_all(connection, sql, params)
+    Error(error) -> Error(error)
+  }
 }
