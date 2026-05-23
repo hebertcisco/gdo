@@ -138,6 +138,17 @@ pub fn connection_query_apis_test() {
   assert query_one == None
 }
 
+pub fn connection_prepare_uses_driver_contract_test() {
+  let assert Ok(conn) = gdo.open_sqlite(":memory:")
+  let assert Ok(stmt) =
+    connection.prepare(conn, "select * from users where email = :email")
+  let assert Ok(query_result) =
+    statement.query_all(stmt, [Named("email", Int(1))])
+
+  assert statement.placeholder_style(stmt) == statement.NamedParameters
+  assert result.row_count(query_result) == 0
+}
+
 pub fn root_exec_and_query_helpers_test() {
   let assert Ok(exec_result) =
     gdo.exec_sqlite(":memory:", "delete from users where id = ?", [
