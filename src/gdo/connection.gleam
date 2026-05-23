@@ -27,6 +27,10 @@ pub fn sqlite(database: String) -> ConnectionConfig {
   ConnectionConfig(driver: driver.Sqlite, database:)
 }
 
+pub fn sqlite_config(database: String) -> ConnectionConfig {
+  sqlite(database)
+}
+
 pub fn open(config: ConnectionConfig) -> Result(Connection, Error) {
   let ConnectionConfig(database:, driver: current_driver) = config
 

@@ -17,6 +17,10 @@ pub fn sqlite(database: String) -> connection.ConnectionConfig {
   connection.sqlite(database)
 }
 
+pub fn sqlite_config(database: String) -> connection.ConnectionConfig {
+  connection.sqlite_config(database)
+}
+
 pub fn open_sqlite(database: String) -> Result(connection.Connection, Error) {
   database
   |> connection.sqlite
