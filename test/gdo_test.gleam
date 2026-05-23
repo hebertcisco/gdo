@@ -94,3 +94,65 @@ pub fn query_result_with_rows_test() {
   assert result.first(current_result) == Some(first_row)
   assert result.rows(current_result) == [first_row, second_row]
 }
+
+pub fn statement_exec_test() {
+  let assert Ok(stmt) = statement.prepare("update users set active = ?")
+  let assert Ok(exec_result) = statement.exec(stmt, [Positional(Int(1))])
+
+  assert result.rows_affected(exec_result) == 0
+  assert result.last_insert_id(exec_result) == None
+}
+
+pub fn statement_query_apis_test() {
+  let assert Ok(stmt) = statement.prepare("select * from users where id = ?")
+  let assert Ok(query_result) = statement.query_all(stmt, [Positional(Int(1))])
+  let assert Ok(query_one) = statement.query_one(stmt, [Positional(Int(1))])
+
+  assert result.row_count(query_result) == 0
+  assert query_one == None
+}
+
+pub fn connection_exec_test() {
+  let assert Ok(conn) = gdo.open_sqlite(":memory:")
+  let assert Ok(exec_result) =
+    connection.exec(conn, "insert into users (id) values (?)", [
+      Positional(Int(1)),
+    ])
+
+  assert result.rows_affected(exec_result) == 0
+  assert connection.last_insert_id(conn) == None
+}
+
+pub fn connection_query_apis_test() {
+  let assert Ok(conn) = gdo.open_sqlite(":memory:")
+  let assert Ok(query_result) =
+    connection.query_all(conn, "select * from users where id = ?", [
+      Positional(Int(1)),
+    ])
+  let assert Ok(query_one) =
+    connection.query_one(conn, "select * from users where id = ?", [
+      Positional(Int(1)),
+    ])
+
+  assert result.row_count(query_result) == 0
+  assert query_one == None
+}
+
+pub fn root_exec_and_query_helpers_test() {
+  let assert Ok(exec_result) =
+    gdo.exec_sqlite(":memory:", "delete from users where id = ?", [
+      Positional(Int(1)),
+    ])
+  let assert Ok(query_result) =
+    gdo.query_all_sqlite(":memory:", "select * from users where id = ?", [
+      Positional(Int(1)),
+    ])
+  let assert Ok(query_one) =
+    gdo.query_one_sqlite(":memory:", "select * from users where id = ?", [
+      Positional(Int(1)),
+    ])
+
+  assert result.rows_affected(exec_result) == 0
+  assert result.row_count(query_result) == 0
+  assert query_one == None
+}
