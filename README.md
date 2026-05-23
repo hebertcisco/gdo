@@ -88,14 +88,17 @@ pub fn main() -> Result(Nil, Error) {
 ## Connection Workflow
 
 Use `gdo.open_sqlite` for the common path, or `connection.open` with
-`connection.sqlite` when you want to build the configuration explicitly.
+`connection.sqlite_config` when you want to build the configuration explicitly.
 
 ```gleam
 import gdo
 import gdo/connection
 
 pub fn open_database() {
-  let assert Ok(db) = gdo.open_sqlite("file:app.sqlite")
+  let assert Ok(db) =
+    gdo.sqlite_config("file:app.sqlite")
+    |> connection.open
+
   assert connection.in_transaction(db) == False
 }
 ```
@@ -248,6 +251,7 @@ Current SQLite support includes:
 
 Current SQLite limitation:
 
+- the JavaScript SQLite path is currently Deno-specific through `sqlight`
 - result rows are most reliable through positional access and
   `decode.column_at`. The current SQLite path does not yet expose real column
   names from backend metadata, so rows returned from queries use synthetic
