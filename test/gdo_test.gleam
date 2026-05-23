@@ -7,6 +7,7 @@ import gdo/result
 import gdo/row
 import gdo/statement
 import gdo/value.{Int, Named, Null, Positional, String}
+import gleam/list
 import gleam/option.{None, Some}
 import gleeunit
 
@@ -26,12 +27,80 @@ pub fn open_sqlite_connection_test() {
 }
 
 pub fn sqlite_config_aliases_test() {
-  let assert Ok(conn) =
-    gdo.sqlite_config(":memory:")
-    |> connection.open
+  let config = gdo.sqlite_config(":memory:")
+  let assert Ok(conn) = config |> connection.open
 
   assert connection.database(conn) == ":memory:"
   assert connection.sqlite_config(":memory:") == connection.sqlite(":memory:")
+  assert connection.config_driver(config) == driver.Sqlite
+  assert connection.config_target(config) == driver.EmbeddedDatabase(":memory:")
+}
+
+pub fn server_connection_config_building_test() {
+  let config =
+    connection.server(
+      driver.Sqlite,
+      "db.internal",
+      3306,
+      "app",
+      connection.username_and_password("root", "secret"),
+      connection.require_tls(),
+    )
+    |> connection.with_option("pool_size", "10")
+
+  assert connection.config_driver(config) == driver.Sqlite
+  assert connection.config_options(config) == [#("pool_size", "10")]
+  assert connection.config_target(config)
+    == driver.ServerDatabase(driver.NetworkEndpoint(
+      host: "db.internal",
+      port: 3306,
+      database: "app",
+      authentication: driver.UsernameAndPassword(
+        username: "root",
+        password: "secret",
+      ),
+      tls: driver.RequireTls,
+    ))
+}
+
+pub fn reject_invalid_server_connection_config_test() {
+  let config =
+    connection.server(
+      driver.Sqlite,
+      "   ",
+      3306,
+      "app",
+      connection.no_authentication(),
+      connection.disable_tls(),
+    )
+
+  let assert Error(err) = connection.open(config)
+  assert error.message(err) == "Host cannot be empty."
+}
+
+pub fn reject_invalid_server_authentication_config_test() {
+  let config =
+    connection.server(
+      driver.Sqlite,
+      "db.internal",
+      3306,
+      "app",
+      connection.username_and_password("   ", "secret"),
+      connection.disable_tls(),
+    )
+
+  let assert Error(err) = connection.open(config)
+  assert error.message(err) == "Username cannot be empty."
+}
+
+pub fn sqlite_driver_capabilities_foundation_test() {
+  let capabilities = driver.capabilities(driver.Sqlite)
+
+  assert list.contains(capabilities, driver.SupportsTransactions)
+  assert list.contains(capabilities, driver.SupportsLastInsertId)
+  assert list.contains(capabilities, driver.SupportsEmbeddedConnections)
+  assert driver.supports(driver.Sqlite, driver.SupportsNetworkConnections)
+    == False
 }
 
 pub fn reject_empty_database_test() {
@@ -252,6 +321,7 @@ pub fn connection_exec_reports_sql_errors_test() {
   let assert Error(err) = connection.exec(conn, "this is not valid sql", [])
   let assert error.QueryError(..) = err
   assert error.code(err) != None
+  assert error.details(err) != []
 }
 
 pub fn connection_close_test() {
@@ -498,6 +568,10 @@ pub fn sqlite_last_insert_id_without_insert_is_none_test() {
   assert connection.last_insert_id(conn) == None
 }
 
+pub fn sqlite_driver_contract_conformance_test() {
+  assert_driver_contract_conformance(connection.sqlite(":memory:"))
+}
+
 pub fn sqlite_file_database_roundtrip_integration_test() {
   let database = sqlite_test_database("integration-roundtrip")
   let assert Ok(conn) = gdo.open_sqlite(database)
@@ -608,4 +682,28 @@ pub fn sqlite_file_database_failure_integration_test() {
 
 fn sqlite_test_database(name: String) -> String {
   "file:/private/tmp/gdo-" <> name <> ".sqlite"
+}
+
+fn assert_driver_contract_conformance(config: connection.ConnectionConfig) {
+  let assert Ok(conn) = connection.open(config)
+  let assert Ok(_) =
+    connection.exec(
+      conn,
+      "create table users (id integer primary key, name text not null)",
+      [],
+    )
+  let assert Ok(exec_result) =
+    connection.exec(conn, "insert into users (id, name) values (?, ?)", [
+      Positional(Int(1)),
+      Positional(String("Ana")),
+    ])
+  let assert Ok(Some(current_row)) =
+    connection.query_one(conn, "select id, name from users where id = ?", [
+      Positional(Int(1)),
+    ])
+
+  assert result.rows_affected(exec_result) == 1
+  assert row.get_at(current_row, 0) == Ok(Int(1))
+  assert row.get_at(current_row, 1) == Ok(String("Ana"))
+  assert connection.close(conn) == Ok(Nil)
 }

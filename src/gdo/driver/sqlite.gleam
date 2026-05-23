@@ -34,15 +34,30 @@ pub fn contract() -> driver.DriverContract {
   )
 }
 
-fn connect(database: String) -> Result(driver.DriverConnectionState, Error) {
-  case sqlight.open(database) {
-    Ok(connection) ->
-      Ok(driver.SqliteConnectionState(
-        database:,
-        connection: connection,
-        last_insert_id: None,
-      ))
-    Error(error) -> Error(connection_error(error))
+fn connect(
+  target: driver.ConnectionTarget,
+) -> Result(driver.DriverConnectionState, Error) {
+  case target {
+    driver.EmbeddedDatabase(path:) ->
+      case sqlight.open(path) {
+        Ok(connection) ->
+          Ok(driver.SqliteConnectionState(
+            database: path,
+            connection: connection,
+            last_insert_id: None,
+          ))
+        Error(error) -> Error(connection_error(error))
+      }
+
+    driver.ServerDatabase(_) ->
+      Error(
+        ConnectionError(
+          message: "SQLite does not support network connection targets.",
+          sqlstate: None,
+          code: None,
+          details: [#("driver", "sqlite"), #("target", "server")],
+        ),
+      )
   }
 }
 
@@ -179,20 +194,22 @@ fn to_sqlight_value(db_value: value.DbValue) -> sqlight.Value {
 }
 
 fn connection_error(sqlight_error: sqlight.Error) -> Error {
-  let sqlight.SqlightError(code:, message:, ..) = sqlight_error
+  let sqlight.SqlightError(code:, message:, offset:) = sqlight_error
   ConnectionError(
     message: message,
     sqlstate: None,
     code: Some(int.to_string(sqlight.error_code_to_int(code))),
+    details: sqlite_error_details(code, offset),
   )
 }
 
 fn query_error(sqlight_error: sqlight.Error) -> Error {
-  let sqlight.SqlightError(code:, message:, ..) = sqlight_error
+  let sqlight.SqlightError(code:, message:, offset:) = sqlight_error
   QueryError(
     message: message,
     sqlstate: None,
     code: Some(int.to_string(sqlight.error_code_to_int(code))),
+    details: sqlite_error_details(code, offset),
   )
 }
 
@@ -312,4 +329,15 @@ fn decode_non_null_db_value(
 
 fn column_name(index: Int) -> String {
   "column_" <> int.to_string(index)
+}
+
+fn sqlite_error_details(
+  code: sqlight.ErrorCode,
+  offset: Int,
+) -> List(#(String, String)) {
+  [
+    #("driver", "sqlite"),
+    #("driver_code", int.to_string(sqlight.error_code_to_int(code))),
+    #("error_offset", int.to_string(offset)),
+  ]
 }
