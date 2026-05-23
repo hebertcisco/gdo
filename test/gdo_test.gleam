@@ -178,13 +178,31 @@ pub fn statement_query_apis_test() {
 
 pub fn connection_exec_test() {
   let assert Ok(conn) = gdo.open_sqlite(":memory:")
+  let assert Ok(_) =
+    connection.exec(
+      conn,
+      "create table users (id integer primary key, active integer)",
+      [],
+    )
   let assert Ok(exec_result) =
-    connection.exec(conn, "insert into users (id) values (?)", [
+    connection.exec(conn, "insert into users (id, active) values (?, ?)", [
+      Positional(Int(1)),
       Positional(Int(1)),
     ])
 
   assert result.rows_affected(exec_result) == 0
   assert connection.last_insert_id(conn) == None
+}
+
+pub fn connection_exec_reports_sql_errors_test() {
+  let assert Ok(conn) = gdo.open_sqlite(":memory:")
+  let assert Error(err) = connection.exec(conn, "this is not valid sql", [])
+  let assert error.QueryError(..) = err
+}
+
+pub fn connection_close_test() {
+  let assert Ok(conn) = gdo.open_sqlite(":memory:")
+  assert connection.close(conn) == Ok(Nil)
 }
 
 pub fn connection_query_apis_test() {
@@ -214,16 +232,23 @@ pub fn connection_prepare_uses_driver_contract_test() {
 }
 
 pub fn root_exec_and_query_helpers_test() {
+  let database = "file:/private/tmp/gdo-root-test.sqlite"
+  let assert Ok(_) =
+    gdo.exec_sqlite(
+      database,
+      "drop table if exists users; create table users (id integer primary key)",
+      [],
+    )
   let assert Ok(exec_result) =
-    gdo.exec_sqlite(":memory:", "delete from users where id = ?", [
+    gdo.exec_sqlite(database, "delete from users where id = ?", [
       Positional(Int(1)),
     ])
   let assert Ok(query_result) =
-    gdo.query_all_sqlite(":memory:", "select * from users where id = ?", [
+    gdo.query_all_sqlite(database, "select * from users where id = ?", [
       Positional(Int(1)),
     ])
   let assert Ok(query_one) =
-    gdo.query_one_sqlite(":memory:", "select * from users where id = ?", [
+    gdo.query_one_sqlite(database, "select * from users where id = ?", [
       Positional(Int(1)),
     ])
 

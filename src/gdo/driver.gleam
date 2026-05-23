@@ -3,6 +3,7 @@ import gdo/result
 import gdo/value.{type Param}
 import gleam/list
 import gleam/option.{type Option}
+import sqlight
 
 pub type Capability {
   SupportsTransactions
@@ -16,16 +17,21 @@ pub type Driver {
 }
 
 pub type DriverConnectionState {
-  SqliteConnectionState(database: String, last_insert_id: Option(Int))
+  SqliteConnectionState(
+    database: String,
+    connection: sqlight.Connection,
+    last_insert_id: Option(Int),
+  )
 }
 
 pub type DriverStatementState {
-  SqliteStatementState(sql: String)
+  SqliteStatementState(connection: sqlight.Connection, sql: String)
 }
 
 pub type DriverContract {
   DriverContract(
     connect: fn(String) -> Result(DriverConnectionState, Error),
+    close: fn(DriverConnectionState) -> Result(Nil, Error),
     prepare: fn(DriverConnectionState, String) ->
       Result(DriverStatementState, Error),
     exec: fn(DriverStatementState, List(Param)) ->
@@ -75,6 +81,14 @@ pub fn prepare(
 ) -> Result(DriverStatementState, Error) {
   let DriverContract(prepare:, ..) = contract
   prepare(connection_state, sql)
+}
+
+pub fn close(
+  contract: DriverContract,
+  connection_state: DriverConnectionState,
+) -> Result(Nil, Error) {
+  let DriverContract(close:, ..) = contract
+  close(connection_state)
 }
 
 pub fn exec(

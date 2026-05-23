@@ -152,6 +152,11 @@ pub fn prepare(
   }
 }
 
+pub fn close(connection: Connection) -> Result(Nil, Error) {
+  let Connection(contract:, connection_state:, ..) = connection
+  driver.close(contract, connection_state)
+}
+
 pub fn exec(
   connection: Connection,
   sql: String,
