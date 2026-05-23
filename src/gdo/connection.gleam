@@ -1,19 +1,21 @@
 import gleam/string
-import gdo/driver.{type Capability, type Driver, Sqlite, capabilities}
+import gdo/driver as driver
 import gdo/error.{type Error, InvalidConfiguration}
-import gdo/transaction.{type TransactionState, Idle}
 import gdo/transaction as transaction
 
 pub type ConnectionConfig {
-  ConnectionConfig(driver: Driver, database: String)
+  ConnectionConfig(driver: driver.Driver, database: String)
 }
 
 pub opaque type Connection {
-  Connection(config: ConnectionConfig, transaction_state: TransactionState)
+  Connection(
+    config: ConnectionConfig,
+    transaction_state: transaction.TransactionState,
+  )
 }
 
 pub fn sqlite(database: String) -> ConnectionConfig {
-  ConnectionConfig(driver: Sqlite, database:)
+  ConnectionConfig(driver: driver.Sqlite, database:)
 }
 
 pub fn open(config: ConnectionConfig) -> Result(Connection, Error) {
@@ -21,11 +23,11 @@ pub fn open(config: ConnectionConfig) -> Result(Connection, Error) {
 
   case string.is_empty(string.trim(database)) {
     True -> Error(InvalidConfiguration("Database cannot be empty."))
-    False -> Ok(Connection(config:, transaction_state: Idle))
+    False -> Ok(Connection(config:, transaction_state: transaction.Idle))
   }
 }
 
-pub fn driver(connection: Connection) -> Driver {
+pub fn driver(connection: Connection) -> driver.Driver {
   let Connection(config:, ..) = connection
   let ConnectionConfig(driver:, ..) = config
   driver
@@ -37,8 +39,8 @@ pub fn database(connection: Connection) -> String {
   database
 }
 
-pub fn capabilities(connection: Connection) -> List(Capability) {
-  capabilities(driver(connection))
+pub fn capabilities(connection: Connection) -> List(driver.Capability) {
+  driver.capabilities(driver(connection))
 }
 
 pub fn in_transaction(connection: Connection) -> Bool {
