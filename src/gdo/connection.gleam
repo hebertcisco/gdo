@@ -11,7 +11,11 @@ import gleam/option.{type Option}
 import gleam/string
 
 pub type ConnectionConfig {
-  ConnectionConfig(driver: driver.Driver, database: String)
+  ConnectionConfig(
+    driver: driver.Driver,
+    target: driver.ConnectionTarget,
+    options: List(#(String, String)),
+  )
 }
 
 pub opaque type Connection {
@@ -24,22 +28,93 @@ pub opaque type Connection {
 }
 
 pub fn sqlite(database: String) -> ConnectionConfig {
-  ConnectionConfig(driver: driver.Sqlite, database:)
+  ConnectionConfig(
+    driver: driver.Sqlite,
+    target: driver.EmbeddedDatabase(database),
+    options: [],
+  )
 }
 
 pub fn sqlite_config(database: String) -> ConnectionConfig {
   sqlite(database)
 }
 
-pub fn open(config: ConnectionConfig) -> Result(Connection, Error) {
-  let ConnectionConfig(database:, driver: current_driver) = config
+pub fn server(
+  current_driver: driver.Driver,
+  host: String,
+  port: Int,
+  database: String,
+  authentication: driver.Authentication,
+  tls: driver.TransportSecurity,
+) -> ConnectionConfig {
+  ConnectionConfig(
+    driver: current_driver,
+    target: driver.ServerDatabase(driver.NetworkEndpoint(
+      host: host,
+      port: port,
+      database: database,
+      authentication: authentication,
+      tls: tls,
+    )),
+    options: [],
+  )
+}
 
-  case string.is_empty(string.trim(database)) {
-    True -> Error(InvalidConfiguration("Database cannot be empty."))
-    False -> {
+pub fn no_authentication() -> driver.Authentication {
+  driver.NoAuthentication
+}
+
+pub fn username_and_password(
+  username: String,
+  password: String,
+) -> driver.Authentication {
+  driver.UsernameAndPassword(username:, password:)
+}
+
+pub fn disable_tls() -> driver.TransportSecurity {
+  driver.DisableTls
+}
+
+pub fn prefer_tls() -> driver.TransportSecurity {
+  driver.PreferTls
+}
+
+pub fn require_tls() -> driver.TransportSecurity {
+  driver.RequireTls
+}
+
+pub fn with_option(
+  config: ConnectionConfig,
+  key: String,
+  value: String,
+) -> ConnectionConfig {
+  let ConnectionConfig(driver:, target:, options:) = config
+  ConnectionConfig(driver:, target:, options: [#(key, value), ..options])
+}
+
+pub fn config_driver(config: ConnectionConfig) -> driver.Driver {
+  let ConnectionConfig(driver:, ..) = config
+  driver
+}
+
+pub fn config_target(config: ConnectionConfig) -> driver.ConnectionTarget {
+  let ConnectionConfig(target:, ..) = config
+  target
+}
+
+pub fn config_options(config: ConnectionConfig) -> List(#(String, String)) {
+  let ConnectionConfig(options:, ..) = config
+  options
+}
+
+pub fn open(config: ConnectionConfig) -> Result(Connection, Error) {
+  let ConnectionConfig(target:, driver: current_driver, ..) = config
+
+  case validate_target(target) {
+    Ok(_) -> {
       let contract = registry.contract(current_driver)
 
-      case driver.connect(contract, database) {
+      case driver.connect(contract, target) {
         Ok(connection_state) ->
           Ok(Connection(
             config:,
@@ -50,6 +125,7 @@ pub fn open(config: ConnectionConfig) -> Result(Connection, Error) {
         Error(error) -> Error(error)
       }
     }
+    Error(error) -> Error(error)
   }
 }
 
@@ -61,12 +137,24 @@ pub fn driver(connection: Connection) -> driver.Driver {
 
 pub fn database(connection: Connection) -> String {
   let Connection(config:, ..) = connection
-  let ConnectionConfig(database:, ..) = config
-  database
+  let ConnectionConfig(target:, ..) = config
+  driver.identifier(target)
 }
 
 pub fn capabilities(connection: Connection) -> List(driver.Capability) {
   driver.capabilities(driver(connection))
+}
+
+pub fn target(connection: Connection) -> driver.ConnectionTarget {
+  let Connection(config:, ..) = connection
+  let ConnectionConfig(target:, ..) = config
+  target
+}
+
+pub fn options(connection: Connection) -> List(#(String, String)) {
+  let Connection(config:, ..) = connection
+  let ConnectionConfig(options:, ..) = config
+  options
 }
 
 pub fn in_transaction(connection: Connection) -> Bool {
@@ -222,4 +310,54 @@ pub fn query_all_as(
 pub fn last_insert_id(connection: Connection) -> Option(Int) {
   let Connection(contract:, connection_state:, ..) = connection
   driver.last_insert_id(contract, connection_state)
+}
+
+fn validate_target(target: driver.ConnectionTarget) -> Result(Nil, Error) {
+  case target {
+    driver.EmbeddedDatabase(path:) ->
+      case string.is_empty(string.trim(path)) {
+        True -> Error(InvalidConfiguration("Database cannot be empty."))
+        False -> Ok(Nil)
+      }
+
+    driver.ServerDatabase(network) -> validate_network_endpoint(network)
+  }
+}
+
+fn validate_network_endpoint(
+  network: driver.NetworkEndpoint,
+) -> Result(Nil, Error) {
+  let driver.NetworkEndpoint(
+    host: host,
+    port: port,
+    database: database,
+    authentication: authentication,
+    ..,
+  ) = network
+
+  case string.is_empty(string.trim(host)) {
+    True -> Error(InvalidConfiguration("Host cannot be empty."))
+    False ->
+      case port <= 0 {
+        True -> Error(InvalidConfiguration("Port must be greater than zero."))
+        False ->
+          case string.is_empty(string.trim(database)) {
+            True -> Error(InvalidConfiguration("Database cannot be empty."))
+            False -> validate_authentication(authentication)
+          }
+      }
+  }
+}
+
+fn validate_authentication(
+  authentication: driver.Authentication,
+) -> Result(Nil, Error) {
+  case authentication {
+    driver.NoAuthentication -> Ok(Nil)
+    driver.UsernameAndPassword(username:, ..) ->
+      case string.is_empty(string.trim(username)) {
+        True -> Error(InvalidConfiguration("Username cannot be empty."))
+        False -> Ok(Nil)
+      }
+  }
 }

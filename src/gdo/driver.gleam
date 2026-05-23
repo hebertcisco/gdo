@@ -10,10 +10,40 @@ pub type Capability {
   SupportsLastInsertId
   SupportsPositionalParameters
   SupportsNamedParameters
+  SupportsEmbeddedConnections
+  SupportsNetworkConnections
+  SupportsAuthentication
+  SupportsTlsConfiguration
 }
 
 pub type Driver {
   Sqlite
+}
+
+pub type Authentication {
+  NoAuthentication
+  UsernameAndPassword(username: String, password: String)
+}
+
+pub type TransportSecurity {
+  DisableTls
+  PreferTls
+  RequireTls
+}
+
+pub type NetworkEndpoint {
+  NetworkEndpoint(
+    host: String,
+    port: Int,
+    database: String,
+    authentication: Authentication,
+    tls: TransportSecurity,
+  )
+}
+
+pub type ConnectionTarget {
+  EmbeddedDatabase(path: String)
+  ServerDatabase(network: NetworkEndpoint)
 }
 
 pub type DriverConnectionState {
@@ -30,7 +60,7 @@ pub type DriverStatementState {
 
 pub type DriverContract {
   DriverContract(
-    connect: fn(String) -> Result(DriverConnectionState, Error),
+    connect: fn(ConnectionTarget) -> Result(DriverConnectionState, Error),
     close: fn(DriverConnectionState) -> Result(Nil, Error),
     prepare: fn(DriverConnectionState, String) ->
       Result(DriverStatementState, Error),
@@ -58,7 +88,22 @@ pub fn capabilities(driver: Driver) -> List(Capability) {
       SupportsLastInsertId,
       SupportsPositionalParameters,
       SupportsNamedParameters,
+      SupportsEmbeddedConnections,
     ]
+  }
+}
+
+pub fn connection_target_name(target: ConnectionTarget) -> String {
+  case target {
+    EmbeddedDatabase(_) -> "embedded"
+    ServerDatabase(_) -> "server"
+  }
+}
+
+pub fn identifier(target: ConnectionTarget) -> String {
+  case target {
+    EmbeddedDatabase(path:) -> path
+    ServerDatabase(NetworkEndpoint(database:, ..)) -> database
   }
 }
 
@@ -68,10 +113,10 @@ pub fn supports(driver: Driver, capability capability: Capability) -> Bool {
 
 pub fn connect(
   contract: DriverContract,
-  database: String,
+  target: ConnectionTarget,
 ) -> Result(DriverConnectionState, Error) {
   let DriverContract(connect:, ..) = contract
-  connect(database)
+  connect(target)
 }
 
 pub fn prepare(

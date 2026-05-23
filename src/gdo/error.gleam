@@ -5,8 +5,14 @@ pub type Error {
     message: String,
     sqlstate: Option(String),
     code: Option(String),
+    details: List(#(String, String)),
   )
-  QueryError(message: String, sqlstate: Option(String), code: Option(String))
+  QueryError(
+    message: String,
+    sqlstate: Option(String),
+    code: Option(String),
+    details: List(#(String, String)),
+  )
   TransactionError(message: String)
   DecodeError(message: String)
   UnsupportedFeature(feature: String)
@@ -43,5 +49,16 @@ pub fn code(error: Error) -> Option(String) {
     DecodeError(_) -> None
     UnsupportedFeature(_) -> None
     InvalidConfiguration(_) -> None
+  }
+}
+
+pub fn details(error: Error) -> List(#(String, String)) {
+  case error {
+    ConnectionError(details:, ..) -> details
+    QueryError(details:, ..) -> details
+    TransactionError(_) -> []
+    DecodeError(_) -> []
+    UnsupportedFeature(_) -> []
+    InvalidConfiguration(_) -> []
   }
 }
