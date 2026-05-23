@@ -1,6 +1,6 @@
 name = "gdo"
 version = "0.1.0"
-description = "A Gleam database access library inspired by PDO, starting with SQLite and a cross-target architecture."
+description = "A database access library for Gleam with a typed, functional API."
 licences = ["Apache-2.0"]
 repository = { type = "github", user = "hebertcisco", repo = "gdo" }
 links = [
