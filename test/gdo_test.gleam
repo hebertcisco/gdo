@@ -25,6 +25,15 @@ pub fn open_sqlite_connection_test() {
   assert connection.in_transaction(conn) == False
 }
 
+pub fn sqlite_config_aliases_test() {
+  let assert Ok(conn) =
+    gdo.sqlite_config(":memory:")
+    |> connection.open
+
+  assert connection.database(conn) == ":memory:"
+  assert connection.sqlite_config(":memory:") == connection.sqlite(":memory:")
+}
+
 pub fn reject_empty_database_test() {
   let assert Error(err) = gdo.open_sqlite("   ")
   assert error.message(err) == "Database cannot be empty."
