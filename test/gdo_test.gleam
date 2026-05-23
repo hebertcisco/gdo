@@ -61,6 +61,41 @@ pub fn statement_rejects_wrong_param_style_test() {
   assert error.message(err) == "Named statements require named parameters only."
 }
 
+pub fn statement_ignores_placeholders_inside_single_quotes_test() {
+  let assert Ok(stmt) =
+    statement.prepare("select '?' as marker, ':name' as label")
+
+  assert statement.placeholder_style(stmt) == statement.NoParameters
+}
+
+pub fn statement_ignores_placeholders_inside_comments_test() {
+  let assert Ok(stmt) =
+    statement.prepare(
+      "select 1 -- ? :ignored\nfrom users /* :still_ignored ? */ where id = ?",
+    )
+
+  assert statement.placeholder_style(stmt) == statement.PositionalParameters
+}
+
+pub fn statement_detects_named_placeholders_only_in_sql_context_test() {
+  let assert Ok(stmt) =
+    statement.prepare(
+      "select ':' as prefix, name from users where email = :email",
+    )
+
+  assert statement.placeholder_style(stmt) == statement.NamedParameters
+}
+
+pub fn statement_rejects_mixed_placeholders_outside_strings_test() {
+  let assert Error(err) =
+    statement.prepare(
+      "select ':ignored' as literal from users where id = ? and email = :email",
+    )
+
+  assert error.message(err)
+    == "Cannot mix positional and named parameters in the same statement."
+}
+
 pub fn row_access_test() {
   let current_row = row.new([#("id", Int(10)), #("name", Int(20))])
 
