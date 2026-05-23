@@ -1,5 +1,7 @@
 # gdo
 
+[![test](https://github.com/hebertcisco/gdo/actions/workflows/test.yml/badge.svg)](https://github.com/hebertcisco/gdo/actions/workflows/test.yml)
+
 `gdo` is a database access library for Gleam with a typed, functional API.
 
 It provides a small and consistent interface for:
