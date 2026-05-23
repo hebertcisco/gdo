@@ -358,6 +358,114 @@ pub fn sqlite_last_insert_id_without_insert_is_none_test() {
   assert connection.last_insert_id(conn) == None
 }
 
+pub fn sqlite_file_database_roundtrip_integration_test() {
+  let database = sqlite_test_database("integration-roundtrip")
+  let assert Ok(conn) = gdo.open_sqlite(database)
+  let assert Ok(_) =
+    connection.exec(
+      conn,
+      "drop table if exists accounts; create table accounts (id integer primary key, email text not null, active integer not null)",
+      [],
+    )
+  let assert Ok(insert_statement) =
+    connection.prepare(
+      conn,
+      "insert into accounts (id, email, active) values (?, ?, ?)",
+    )
+  let assert Ok(exec_result) =
+    statement.exec(insert_statement, [
+      Positional(Int(1)),
+      Positional(String("ana@example.com")),
+      Positional(Int(1)),
+    ])
+  let assert Ok(query_statement) =
+    connection.prepare(
+      conn,
+      "select id, email, active from accounts where email = :email",
+    )
+  let assert Ok(Some(current_row)) =
+    statement.query_one(query_statement, [
+      Named("email", String("ana@example.com")),
+    ])
+  let assert Ok(_) = connection.close(conn)
+
+  let assert Ok(reopened_conn) = gdo.open_sqlite(database)
+  let assert Ok(query_result) =
+    connection.query_all(
+      reopened_conn,
+      "select id, email, active from accounts order by id",
+      [],
+    )
+
+  assert result.rows_affected(exec_result) == 1
+  assert result.row_count(query_result) == 1
+  assert row.get_at(current_row, 0) == Ok(Int(1))
+  assert row.get_at(current_row, 1) == Ok(String("ana@example.com"))
+  assert row.get_at(current_row, 2) == Ok(Int(1))
+}
+
+pub fn sqlite_file_database_transaction_integration_test() {
+  let database = sqlite_test_database("integration-transactions")
+  let assert Ok(conn) = gdo.open_sqlite(database)
+  let assert Ok(_) =
+    connection.exec(
+      conn,
+      "drop table if exists ledger; create table ledger (id integer primary key, note text not null)",
+      [],
+    )
+
+  let assert Ok(conn) = connection.begin(conn)
+  let assert Ok(_) =
+    connection.exec(conn, "insert into ledger (id, note) values (?, ?)", [
+      Positional(Int(1)),
+      Positional(String("committed")),
+    ])
+  let assert Ok(conn) = connection.commit(conn)
+
+  let assert Ok(conn) = connection.begin(conn)
+  let assert Ok(_) =
+    connection.exec(conn, "insert into ledger (id, note) values (?, ?)", [
+      Positional(Int(2)),
+      Positional(String("rolled back")),
+    ])
+  let assert Ok(conn) = connection.rollback(conn)
+
+  let assert Ok(query_result) =
+    connection.query_all(conn, "select id, note from ledger order by id", [])
+  let assert Ok(Some(current_row)) =
+    connection.query_one(conn, "select id, note from ledger where id = ?", [
+      Positional(Int(1)),
+    ])
+
+  assert result.row_count(query_result) == 1
+  assert row.get_at(current_row, 0) == Ok(Int(1))
+  assert row.get_at(current_row, 1) == Ok(String("committed"))
+}
+
+pub fn sqlite_file_database_failure_integration_test() {
+  let database = sqlite_test_database("integration-failures")
+  let assert Ok(conn) = gdo.open_sqlite(database)
+  let assert Ok(_) =
+    connection.exec(
+      conn,
+      "drop table if exists users; create table users (id integer primary key, email text not null unique)",
+      [],
+    )
+  let assert Ok(_) =
+    connection.exec(conn, "insert into users (id, email) values (?, ?)", [
+      Positional(Int(1)),
+      Positional(String("ana@example.com")),
+    ])
+  let assert Error(err) =
+    connection.exec(conn, "insert into users (id, email) values (?, ?)", [
+      Positional(Int(2)),
+      Positional(String("ana@example.com")),
+    ])
+
+  let assert error.QueryError(..) = err
+  assert error.code(err) != None
+}
+
 fn sqlite_test_database(name: String) -> String {
   "file:/private/tmp/gdo-" <> name <> ".sqlite"
 }
