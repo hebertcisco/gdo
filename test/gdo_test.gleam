@@ -1,11 +1,12 @@
 import gdo
 import gdo/connection
+import gdo/decode
 import gdo/driver
 import gdo/error
 import gdo/result
 import gdo/row
 import gdo/statement
-import gdo/value.{Int, Named, Positional}
+import gdo/value.{Int, Named, Null, Positional, String}
 import gleam/option.{None, Some}
 import gleeunit
 
@@ -102,6 +103,34 @@ pub fn row_access_test() {
   assert row.column_count(current_row) == 2
   assert row.get(current_row, "id") == Ok(Int(10))
   assert row.get_at(current_row, 1) == Ok(Int(20))
+}
+
+pub fn row_decode_map2_test() {
+  let current_row = row.new([#("id", Int(10)), #("name", String("Ana"))])
+  let decoder =
+    decode.map2(
+      decode.column("id", using: decode.int()),
+      decode.column("name", using: decode.string()),
+      with: fn(id, name) { #(id, name) },
+    )
+
+  assert decode.decode(current_row, using: decoder) == Ok(#(10, "Ana"))
+}
+
+pub fn row_decode_nullable_test() {
+  let current_row = row.new([#("nickname", Null)])
+  let decoder =
+    decode.column("nickname", using: decode.nullable(decode.string()))
+
+  assert decode.decode(current_row, using: decoder) == Ok(None)
+}
+
+pub fn row_decode_type_error_test() {
+  let current_row = row.new([#("active", String("yes"))])
+  let decoder = decode.column("active", using: decode.bool())
+
+  let assert Error(err) = decode.decode(current_row, using: decoder)
+  assert error.message(err) == "Expected bool but found string"
 }
 
 pub fn execution_result_test() {
