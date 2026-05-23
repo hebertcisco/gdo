@@ -1,3 +1,4 @@
+import gdo/driver
 import gdo/error.{type Error, InvalidConfiguration}
 import gdo/result
 import gdo/row
@@ -12,8 +13,20 @@ pub type PlaceholderStyle {
   NamedParameters
 }
 
+type StatementBackend {
+  Unbound
+  Bound(
+    contract: driver.DriverContract,
+    statement_state: driver.DriverStatementState,
+  )
+}
+
 pub opaque type Statement {
-  Statement(sql: String, placeholder_style: PlaceholderStyle)
+  Statement(
+    sql: String,
+    placeholder_style: PlaceholderStyle,
+    backend: StatementBackend,
+  )
 }
 
 pub fn prepare(sql sql: String) -> Result(Statement, Error) {
@@ -23,7 +36,8 @@ pub fn prepare(sql sql: String) -> Result(Statement, Error) {
     True -> Error(InvalidConfiguration("SQL cannot be empty."))
     False ->
       case infer_placeholder_style(trimmed_sql) {
-        Ok(placeholder_style) -> Ok(Statement(trimmed_sql, placeholder_style))
+        Ok(placeholder_style) ->
+          Ok(Statement(trimmed_sql, placeholder_style, Unbound))
         Error(error) -> Error(error)
       }
   }
@@ -37,6 +51,19 @@ pub fn sql(statement: Statement) -> String {
 pub fn placeholder_style(statement: Statement) -> PlaceholderStyle {
   let Statement(placeholder_style:, ..) = statement
   placeholder_style
+}
+
+pub fn bind(
+  statement: Statement,
+  contract: driver.DriverContract,
+  statement_state: driver.DriverStatementState,
+) -> Statement {
+  let Statement(sql:, placeholder_style:, ..) = statement
+  Statement(
+    sql:,
+    placeholder_style:,
+    backend: Bound(contract:, statement_state:),
+  )
 }
 
 pub fn uses_parameters(statement: Statement) -> Bool {
@@ -99,7 +126,13 @@ pub fn exec(
   params: List(Param),
 ) -> Result(result.ExecutionResult, Error) {
   case validate_params(statement, params) {
-    Ok(_) -> Ok(result.execution_result(rows_affected: 0, last_insert_id: None))
+    Ok(_) ->
+      case backend(statement) {
+        Bound(contract:, statement_state:) ->
+          driver.exec(contract, statement_state, params)
+        Unbound ->
+          Ok(result.execution_result(rows_affected: 0, last_insert_id: None))
+      }
     Error(error) -> Error(error)
   }
 }
@@ -116,7 +149,12 @@ pub fn query_all(
   params: List(Param),
 ) -> Result(result.QueryResult, Error) {
   case validate_params(statement, params) {
-    Ok(_) -> Ok(result.empty_query_result())
+    Ok(_) ->
+      case backend(statement) {
+        Bound(contract:, statement_state:) ->
+          driver.query_all(contract, statement_state, params)
+        Unbound -> Ok(result.empty_query_result())
+      }
     Error(error) -> Error(error)
   }
 }
@@ -129,6 +167,11 @@ pub fn query_one(
     Ok(query_result) -> Ok(result.first(query_result))
     Error(error) -> Error(error)
   }
+}
+
+fn backend(statement: Statement) -> StatementBackend {
+  let Statement(backend:, ..) = statement
+  backend
 }
 
 fn infer_placeholder_style(sql: String) -> Result(PlaceholderStyle, Error) {
