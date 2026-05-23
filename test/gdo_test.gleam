@@ -191,6 +191,34 @@ pub fn statement_query_apis_test() {
   assert row.get_at(current_row, 1) == Ok(String("Ana"))
 }
 
+pub fn statement_query_as_helpers_test() {
+  let assert Ok(conn) = gdo.open_sqlite(":memory:")
+  let assert Ok(_) =
+    connection.exec(
+      conn,
+      "create table users (id integer primary key, name text)",
+      [],
+    )
+  let assert Ok(_) =
+    connection.exec(conn, "insert into users (id, name) values (?, ?)", [
+      Positional(Int(1)),
+      Positional(String("Ana")),
+    ])
+  let assert Ok(stmt) =
+    connection.prepare(conn, "select id, name from users where id = ?")
+  let decoder =
+    decode.map2(
+      decode.column_at(0, using: decode.int()),
+      decode.column_at(1, using: decode.string()),
+      with: fn(id, name) { #(id, name) },
+    )
+
+  let assert Ok([#(1, "Ana")]) =
+    statement.query_all_as(stmt, [Positional(Int(1))], using: decoder)
+  let assert Ok(Some(#(1, "Ana"))) =
+    statement.query_one_as(stmt, [Positional(Int(1))], using: decoder)
+}
+
 pub fn connection_exec_test() {
   let assert Ok(conn) = gdo.open_sqlite(":memory:")
   let assert Ok(_) =
@@ -271,6 +299,73 @@ pub fn connection_prepare_uses_driver_contract_test() {
   assert result.row_count(query_result) == 1
 }
 
+pub fn connection_query_as_helpers_test() {
+  let assert Ok(conn) = gdo.open_sqlite(":memory:")
+  let assert Ok(_) =
+    connection.exec(
+      conn,
+      "create table users (id integer primary key, name text)",
+      [],
+    )
+  let assert Ok(_) =
+    connection.exec(conn, "insert into users (id, name) values (?, ?)", [
+      Positional(Int(1)),
+      Positional(String("Ana")),
+    ])
+  let decoder =
+    decode.map2(
+      decode.column_at(0, using: decode.int()),
+      decode.column_at(1, using: decode.string()),
+      with: fn(id, name) { #(id, name) },
+    )
+
+  let assert Ok([#(1, "Ana")]) =
+    connection.query_all_as(
+      conn,
+      "select id, name from users where id = ?",
+      [Positional(Int(1))],
+      using: decoder,
+    )
+  let assert Ok(Some(#(1, "Ana"))) =
+    connection.query_one_as(
+      conn,
+      "select id, name from users where id = ?",
+      [Positional(Int(1))],
+      using: decoder,
+    )
+}
+
+pub fn connection_query_as_propagates_decode_errors_test() {
+  let assert Ok(conn) = gdo.open_sqlite(":memory:")
+  let assert Ok(_) =
+    connection.exec(
+      conn,
+      "create table users (id integer primary key, name text)",
+      [],
+    )
+  let assert Ok(_) =
+    connection.exec(conn, "insert into users (id, name) values (?, ?)", [
+      Positional(Int(1)),
+      Positional(String("Ana")),
+    ])
+  let decoder =
+    decode.map2(
+      decode.column_at(0, using: decode.int()),
+      decode.column_at(1, using: decode.bool()),
+      with: fn(id, active) { #(id, active) },
+    )
+
+  let assert Error(err) =
+    connection.query_one_as(
+      conn,
+      "select id, name from users where id = ?",
+      [Positional(Int(1))],
+      using: decoder,
+    )
+
+  let assert error.DecodeError(_) = err
+}
+
 pub fn root_exec_and_query_helpers_test() {
   let database = sqlite_test_database("root-test")
   let assert Ok(_) =
@@ -297,6 +392,42 @@ pub fn root_exec_and_query_helpers_test() {
   assert result.row_count(query_result) == 1
   assert row.get_at(current_row, 0) == Ok(Int(1))
   assert row.get_at(current_row, 1) == Ok(String("Ana"))
+}
+
+pub fn root_query_as_helpers_test() {
+  let database = sqlite_test_database("root-query-as")
+  let assert Ok(_) =
+    gdo.exec_sqlite(
+      database,
+      "drop table if exists users; create table users (id integer primary key, name text)",
+      [],
+    )
+  let assert Ok(_) =
+    gdo.exec_sqlite(database, "insert into users (id, name) values (?, ?)", [
+      Positional(Int(1)),
+      Positional(String("Ana")),
+    ])
+  let decoder =
+    decode.map2(
+      decode.column_at(0, using: decode.int()),
+      decode.column_at(1, using: decode.string()),
+      with: fn(id, name) { #(id, name) },
+    )
+
+  let assert Ok([#(1, "Ana")]) =
+    gdo.query_all_sqlite_as(
+      database,
+      "select id, name from users where id = ?",
+      [Positional(Int(1))],
+      using: decoder,
+    )
+  let assert Ok(Some(#(1, "Ana"))) =
+    gdo.query_one_sqlite_as(
+      database,
+      "select id, name from users where id = ?",
+      [Positional(Int(1))],
+      using: decoder,
+    )
 }
 
 pub fn sqlite_transaction_commit_persists_rows_test() {

@@ -1,10 +1,11 @@
+import gdo/decode
 import gdo/driver
 import gdo/error.{type Error, InvalidConfiguration}
 import gdo/result
 import gdo/row
 import gdo/value.{type Param, Named, Positional}
 import gleam/list
-import gleam/option.{type Option, None}
+import gleam/option.{type Option, None, Some}
 import gleam/string
 
 pub type PlaceholderStyle {
@@ -177,6 +178,36 @@ pub fn query_one(
 ) -> Result(Option(row.Row), Error) {
   case query_all(statement, params) {
     Ok(query_result) -> Ok(result.first(query_result))
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_all_as(
+  statement: Statement,
+  params: List(Param),
+  using decoder: decode.Decoder(a),
+) -> Result(List(a), Error) {
+  case query_all(statement, params) {
+    Ok(query_result) ->
+      list.try_map(result.rows(query_result), fn(current_row) {
+        decode.decode(current_row, using: decoder)
+      })
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_one_as(
+  statement: Statement,
+  params: List(Param),
+  using decoder: decode.Decoder(a),
+) -> Result(Option(a), Error) {
+  case query_one(statement, params) {
+    Ok(Some(current_row)) ->
+      case decode.decode(current_row, using: decoder) {
+        Ok(decoded) -> Ok(Some(decoded))
+        Error(error) -> Error(error)
+      }
+    Ok(None) -> Ok(None)
     Error(error) -> Error(error)
   }
 }

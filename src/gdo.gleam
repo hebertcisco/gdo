@@ -1,6 +1,7 @@
 //// Public entrypoint for the `gdo` package.
 
 import gdo/connection
+import gdo/decode
 import gdo/error.{type Error}
 import gdo/result
 import gdo/row
@@ -55,6 +56,32 @@ pub fn query_all_sqlite(
 ) -> Result(result.QueryResult, Error) {
   case open_sqlite(database) {
     Ok(connection) -> connection.query_all(connection, sql, params)
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_one_sqlite_as(
+  database: String,
+  sql: String,
+  params: List(Param),
+  using decoder: decode.Decoder(a),
+) -> Result(Option(a), Error) {
+  case open_sqlite(database) {
+    Ok(connection) ->
+      connection.query_one_as(connection, sql, params, using: decoder)
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_all_sqlite_as(
+  database: String,
+  sql: String,
+  params: List(Param),
+  using decoder: decode.Decoder(a),
+) -> Result(List(a), Error) {
+  case open_sqlite(database) {
+    Ok(connection) ->
+      connection.query_all_as(connection, sql, params, using: decoder)
     Error(error) -> Error(error)
   }
 }
