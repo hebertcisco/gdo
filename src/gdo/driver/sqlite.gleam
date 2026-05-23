@@ -1,4 +1,7 @@
-import gdo/driver.{type Capability, SupportsLastInsertId, SupportsNamedParameters, SupportsPositionalParameters, SupportsTransactions}
+import gdo/driver.{
+  type Capability, SupportsLastInsertId, SupportsNamedParameters,
+  SupportsPositionalParameters, SupportsTransactions,
+}
 
 pub const driver_name = "sqlite"
 
