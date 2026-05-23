@@ -1,11 +1,12 @@
 import gdo/driver
+import gdo/driver/registry
 import gdo/error.{type Error, InvalidConfiguration}
 import gdo/result
 import gdo/row
 import gdo/statement
 import gdo/transaction
 import gdo/value.{type Param}
-import gleam/option.{type Option, None}
+import gleam/option.{type Option}
 import gleam/string
 
 pub type ConnectionConfig {
@@ -16,6 +17,8 @@ pub opaque type Connection {
   Connection(
     config: ConnectionConfig,
     transaction_state: transaction.TransactionState,
+    contract: driver.DriverContract,
+    connection_state: driver.DriverConnectionState,
   )
 }
 
@@ -24,11 +27,24 @@ pub fn sqlite(database: String) -> ConnectionConfig {
 }
 
 pub fn open(config: ConnectionConfig) -> Result(Connection, Error) {
-  let ConnectionConfig(database:, ..) = config
+  let ConnectionConfig(database:, driver: current_driver) = config
 
   case string.is_empty(string.trim(database)) {
     True -> Error(InvalidConfiguration("Database cannot be empty."))
-    False -> Ok(Connection(config:, transaction_state: transaction.Idle))
+    False -> {
+      let contract = registry.contract(current_driver)
+
+      case driver.connect(contract, database) {
+        Ok(connection_state) ->
+          Ok(Connection(
+            config:,
+            transaction_state: transaction.Idle,
+            contract:,
+            connection_state:,
+          ))
+        Error(error) -> Error(error)
+      }
+    }
   }
 }
 
@@ -54,28 +70,61 @@ pub fn in_transaction(connection: Connection) -> Bool {
 }
 
 pub fn begin(connection: Connection) -> Result(Connection, Error) {
-  let Connection(config:, transaction_state:) = connection
+  let Connection(config:, transaction_state:, contract:, connection_state:) =
+    connection
 
   case transaction.begin(transaction_state) {
-    Ok(next_state) -> Ok(Connection(config:, transaction_state: next_state))
+    Ok(next_state) ->
+      case driver.begin(contract, connection_state) {
+        Ok(next_connection_state) ->
+          Ok(Connection(
+            config:,
+            transaction_state: next_state,
+            contract:,
+            connection_state: next_connection_state,
+          ))
+        Error(error) -> Error(error)
+      }
     Error(error) -> Error(error)
   }
 }
 
 pub fn commit(connection: Connection) -> Result(Connection, Error) {
-  let Connection(config:, transaction_state:) = connection
+  let Connection(config:, transaction_state:, contract:, connection_state:) =
+    connection
 
   case transaction.commit(transaction_state) {
-    Ok(next_state) -> Ok(Connection(config:, transaction_state: next_state))
+    Ok(next_state) ->
+      case driver.commit(contract, connection_state) {
+        Ok(next_connection_state) ->
+          Ok(Connection(
+            config:,
+            transaction_state: next_state,
+            contract:,
+            connection_state: next_connection_state,
+          ))
+        Error(error) -> Error(error)
+      }
     Error(error) -> Error(error)
   }
 }
 
 pub fn rollback(connection: Connection) -> Result(Connection, Error) {
-  let Connection(config:, transaction_state:) = connection
+  let Connection(config:, transaction_state:, contract:, connection_state:) =
+    connection
 
   case transaction.rollback(transaction_state) {
-    Ok(next_state) -> Ok(Connection(config:, transaction_state: next_state))
+    Ok(next_state) ->
+      case driver.rollback(contract, connection_state) {
+        Ok(next_connection_state) ->
+          Ok(Connection(
+            config:,
+            transaction_state: next_state,
+            contract:,
+            connection_state: next_connection_state,
+          ))
+        Error(error) -> Error(error)
+      }
     Error(error) -> Error(error)
   }
 }
@@ -84,8 +133,23 @@ pub fn prepare(
   connection: Connection,
   sql: String,
 ) -> Result(statement.Statement, Error) {
-  let _ = connection
-  statement.prepare(sql)
+  let Connection(contract:, connection_state:, ..) = connection
+
+  case statement.prepare(sql) {
+    Ok(prepared_statement) ->
+      case
+        driver.prepare(
+          contract,
+          connection_state,
+          statement.sql(prepared_statement),
+        )
+      {
+        Ok(statement_state) ->
+          Ok(statement.bind(prepared_statement, contract, statement_state))
+        Error(error) -> Error(error)
+      }
+    Error(error) -> Error(error)
+  }
 }
 
 pub fn exec(
@@ -122,6 +186,6 @@ pub fn query_all(
 }
 
 pub fn last_insert_id(connection: Connection) -> Option(Int) {
-  let _ = connection
-  None
+  let Connection(contract:, connection_state:, ..) = connection
+  driver.last_insert_id(contract, connection_state)
 }
