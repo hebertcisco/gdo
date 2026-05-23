@@ -1,5 +1,3 @@
-import gleam/io
+//// Public entrypoint for the `gdo` package while the API is being built out.
 
-pub fn main() -> Nil {
-  io.println("Hello from gdo!")
-}
+pub const package_name = "gdo"
