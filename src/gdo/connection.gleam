@@ -1,6 +1,11 @@
 import gdo/driver
 import gdo/error.{type Error, InvalidConfiguration}
+import gdo/result
+import gdo/row
+import gdo/statement
 import gdo/transaction
+import gdo/value.{type Param}
+import gleam/option.{type Option, None}
 import gleam/string
 
 pub type ConnectionConfig {
@@ -73,4 +78,50 @@ pub fn rollback(connection: Connection) -> Result(Connection, Error) {
     Ok(next_state) -> Ok(Connection(config:, transaction_state: next_state))
     Error(error) -> Error(error)
   }
+}
+
+pub fn prepare(
+  connection: Connection,
+  sql: String,
+) -> Result(statement.Statement, Error) {
+  let _ = connection
+  statement.prepare(sql)
+}
+
+pub fn exec(
+  connection: Connection,
+  sql: String,
+  params: List(Param),
+) -> Result(result.ExecutionResult, Error) {
+  case prepare(connection, sql) {
+    Ok(prepared) -> statement.exec(prepared, params)
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_one(
+  connection: Connection,
+  sql: String,
+  params: List(Param),
+) -> Result(Option(row.Row), Error) {
+  case prepare(connection, sql) {
+    Ok(prepared) -> statement.query_one(prepared, params)
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_all(
+  connection: Connection,
+  sql: String,
+  params: List(Param),
+) -> Result(result.QueryResult, Error) {
+  case prepare(connection, sql) {
+    Ok(prepared) -> statement.query_all(prepared, params)
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn last_insert_id(connection: Connection) -> Option(Int) {
+  let _ = connection
+  None
 }
