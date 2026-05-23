@@ -1,7 +1,11 @@
 import gdo/driver
-import gdo/error.{type Error, ConnectionError, QueryError}
+import gdo/error.{
+  type Error, ConnectionError, DecodeError, QueryError, TransactionError,
+}
 import gdo/result
+import gdo/row
 import gdo/value
+import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
 import gleam/int
 import gleam/list
@@ -68,8 +72,7 @@ fn exec(
   case to_sqlight_values(params) {
     [] ->
       case sqlight.exec(sql, on: connection) {
-        Ok(_) ->
-          Ok(result.execution_result(rows_affected: 0, last_insert_id: None))
+        Ok(_) -> execution_result(connection)
         Error(error) -> Error(query_error(error))
       }
 
@@ -82,8 +85,7 @@ fn exec(
           expecting: decode.success(Nil),
         )
       {
-        Ok(_) ->
-          Ok(result.execution_result(rows_affected: 0, last_insert_id: None))
+        Ok(_) -> execution_result(connection)
         Error(error) -> Error(query_error(error))
       }
   }
@@ -94,10 +96,22 @@ fn query_all(
   params: List(value.Param),
 ) -> Result(result.QueryResult, Error) {
   let driver.SqliteStatementState(connection:, sql:) = statement_state
-  let _ = connection
-  let _ = sql
-  let _ = params
-  Ok(result.empty_query_result())
+
+  case
+    sqlight.query(
+      sql,
+      on: connection,
+      with: to_sqlight_values(params),
+      expecting: decode.dynamic,
+    )
+  {
+    Ok(rows) ->
+      case list.try_map(rows, decode_sqlite_row) {
+        Ok(decoded_rows) -> Ok(result.query_result(decoded_rows))
+        Error(error) -> Error(error)
+      }
+    Error(error) -> Error(query_error(error))
+  }
 }
 
 fn begin(
@@ -107,7 +121,7 @@ fn begin(
 
   case sqlight.exec("BEGIN", on: connection) {
     Ok(_) -> Ok(connection_state)
-    Error(error) -> Error(query_error(error))
+    Error(error) -> Error(transaction_error(error))
   }
 }
 
@@ -118,7 +132,7 @@ fn commit(
 
   case sqlight.exec("COMMIT", on: connection) {
     Ok(_) -> Ok(connection_state)
-    Error(error) -> Error(query_error(error))
+    Error(error) -> Error(transaction_error(error))
   }
 }
 
@@ -129,15 +143,19 @@ fn rollback(
 
   case sqlight.exec("ROLLBACK", on: connection) {
     Ok(_) -> Ok(connection_state)
-    Error(error) -> Error(query_error(error))
+    Error(error) -> Error(transaction_error(error))
   }
 }
 
 fn last_insert_id(
   connection_state: driver.DriverConnectionState,
 ) -> Option(Int) {
-  let driver.SqliteConnectionState(last_insert_id:, ..) = connection_state
-  last_insert_id
+  let driver.SqliteConnectionState(connection:, ..) = connection_state
+
+  case read_last_insert_id(connection) {
+    Ok(last_insert_id) -> last_insert_id
+    Error(_) -> None
+  }
 }
 
 fn to_sqlight_values(params: List(value.Param)) -> List(sqlight.Value) {
@@ -176,4 +194,122 @@ fn query_error(sqlight_error: sqlight.Error) -> Error {
     sqlstate: None,
     code: Some(int.to_string(sqlight.error_code_to_int(code))),
   )
+}
+
+fn transaction_error(sqlight_error: sqlight.Error) -> Error {
+  let sqlight.SqlightError(message:, ..) = sqlight_error
+  TransactionError(message: message)
+}
+
+fn execution_result(
+  connection: sqlight.Connection,
+) -> Result(result.ExecutionResult, Error) {
+  case read_rows_affected(connection) {
+    Ok(rows_affected) ->
+      case read_last_insert_id(connection) {
+        Ok(last_insert_id) ->
+          Ok(result.execution_result(rows_affected:, last_insert_id:))
+        Error(error) -> Error(error)
+      }
+    Error(error) -> Error(error)
+  }
+}
+
+fn read_rows_affected(connection: sqlight.Connection) -> Result(Int, Error) {
+  case
+    sqlight.query(
+      "select changes()",
+      on: connection,
+      with: [],
+      expecting: decode.at([0], decode.int),
+    )
+  {
+    Ok([rows_affected]) -> Ok(rows_affected)
+    Ok(_) -> Error(DecodeError("SQLite did not return a changes() value."))
+    Error(error) -> Error(query_error(error))
+  }
+}
+
+fn read_last_insert_id(
+  connection: sqlight.Connection,
+) -> Result(Option(Int), Error) {
+  case
+    sqlight.query(
+      "select last_insert_rowid()",
+      on: connection,
+      with: [],
+      expecting: decode.at([0], decode.int),
+    )
+  {
+    Ok([0]) -> Ok(None)
+    Ok([last_insert_id]) -> Ok(Some(last_insert_id))
+    Ok(_) ->
+      Error(DecodeError("SQLite did not return a last_insert_rowid() value."))
+    Error(error) -> Error(query_error(error))
+  }
+}
+
+fn decode_sqlite_row(current_row: Dynamic) -> Result(row.Row, Error) {
+  case dynamic_row_to_columns(current_row, 0, []) {
+    Ok(columns) -> Ok(row.new(columns))
+    Error(error) -> Error(error)
+  }
+}
+
+fn dynamic_row_to_columns(
+  current_row: Dynamic,
+  index: Int,
+  columns: List(#(String, value.DbValue)),
+) -> Result(List(#(String, value.DbValue)), Error) {
+  case decode.run(current_row, decode.at([index], decode.dynamic)) {
+    Ok(dynamic_value) ->
+      case dynamic_to_db_value(dynamic_value) {
+        Ok(db_value) ->
+          dynamic_row_to_columns(current_row, index + 1, [
+            #(column_name(index), db_value),
+            ..columns
+          ])
+        Error(error) -> Error(error)
+      }
+
+    Error(_) -> Ok(list.reverse(columns))
+  }
+}
+
+fn dynamic_to_db_value(dynamic_value: Dynamic) -> Result(value.DbValue, Error) {
+  case decode.run(dynamic_value, decode.optional(decode.dynamic)) {
+    Ok(None) -> Ok(value.Null)
+    Ok(Some(non_null_value)) -> decode_non_null_db_value(non_null_value)
+    Error(_) -> Error(DecodeError("Unsupported SQLite value type."))
+  }
+}
+
+fn decode_non_null_db_value(
+  dynamic_value: Dynamic,
+) -> Result(value.DbValue, Error) {
+  case decode.run(dynamic_value, decode.int) {
+    Ok(current_value) -> Ok(value.Int(current_value))
+    Error(_) ->
+      case decode.run(dynamic_value, decode.float) {
+        Ok(current_value) -> Ok(value.Float(current_value))
+        Error(_) ->
+          case decode.run(dynamic_value, decode.string) {
+            Ok(current_value) -> Ok(value.String(current_value))
+            Error(_) ->
+              case decode.run(dynamic_value, decode.bit_array) {
+                Ok(current_value) -> Ok(value.Bytes(current_value))
+                Error(_) ->
+                  case decode.run(dynamic_value, decode.bool) {
+                    Ok(current_value) -> Ok(value.Bool(current_value))
+                    Error(_) ->
+                      Error(DecodeError("Unsupported SQLite value type."))
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn column_name(index: Int) -> String {
+  "column_" <> int.to_string(index)
 }
