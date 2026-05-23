@@ -32,6 +32,7 @@ type ScanState {
 type PlaceholderSummary {
   PlaceholderSummary(has_positional: Bool, has_named: Bool)
 }
+
 pub opaque type Statement {
   Statement(
     sql: String,
