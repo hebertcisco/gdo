@@ -1,7 +1,7 @@
-import gleam/string
-import gdo/driver as driver
+import gdo/driver
 import gdo/error.{type Error, InvalidConfiguration}
-import gdo/transaction as transaction
+import gdo/transaction
+import gleam/string
 
 pub type ConnectionConfig {
   ConnectionConfig(driver: driver.Driver, database: String)
