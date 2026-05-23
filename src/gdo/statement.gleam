@@ -1,6 +1,9 @@
 import gdo/error.{type Error, InvalidConfiguration}
+import gdo/result
+import gdo/row
 import gdo/value.{type Param, Named, Positional}
 import gleam/list
+import gleam/option.{type Option, None}
 import gleam/string
 
 pub type PlaceholderStyle {
@@ -88,6 +91,43 @@ pub fn validate_params(
           ))
         False -> Ok(Nil)
       }
+  }
+}
+
+pub fn exec(
+  statement: Statement,
+  params: List(Param),
+) -> Result(result.ExecutionResult, Error) {
+  case validate_params(statement, params) {
+    Ok(_) -> Ok(result.execution_result(rows_affected: 0, last_insert_id: None))
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn execute(
+  statement: Statement,
+  params: List(Param),
+) -> Result(result.ExecutionResult, Error) {
+  exec(statement, params)
+}
+
+pub fn query_all(
+  statement: Statement,
+  params: List(Param),
+) -> Result(result.QueryResult, Error) {
+  case validate_params(statement, params) {
+    Ok(_) -> Ok(result.empty_query_result())
+    Error(error) -> Error(error)
+  }
+}
+
+pub fn query_one(
+  statement: Statement,
+  params: List(Param),
+) -> Result(Option(row.Row), Error) {
+  case query_all(statement, params) {
+    Ok(query_result) -> Ok(result.first(query_result))
+    Error(error) -> Error(error)
   }
 }
 
