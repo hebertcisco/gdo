@@ -1,4 +1,4 @@
-import gleam/option.{None, type Option}
+import gleam/option.{type Option, None}
 
 pub type Error {
   ConnectionError(
