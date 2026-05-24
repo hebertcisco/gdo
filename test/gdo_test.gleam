@@ -681,7 +681,7 @@ pub fn sqlite_file_database_failure_integration_test() {
 }
 
 fn sqlite_test_database(name: String) -> String {
-  "file:/private/tmp/gdo-" <> name <> ".sqlite"
+  "/tmp/gdo-" <> name <> ".sqlite"
 }
 
 fn assert_driver_contract_conformance(config: connection.ConnectionConfig) {
