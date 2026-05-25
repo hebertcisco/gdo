@@ -1,7 +1,7 @@
+import gdo/value.{type DbValue}
 import gleam/dynamic.{type Dynamic}
 import gleam/option.{type Option}
 import sqlight
-import gdo/value.{type DbValue}
 
 pub type Connection {
   Connection(inner: Dynamic)
@@ -12,11 +12,7 @@ pub type SqliteNativeError {
 }
 
 pub type MySqlNativeError {
-  MySqlNativeError(
-    code: Option(Int),
-    sqlstate: Option(String),
-    message: String,
-  )
+  MySqlNativeError(code: Option(Int), sqlstate: Option(String), message: String)
 }
 
 pub type MySqlExecutionResult {
@@ -65,7 +61,9 @@ pub fn mysql_open(
   tls_mode: String,
   options: List(#(String, String)),
 ) -> Result(Connection, MySqlNativeError) {
-  case mysql_open_raw(host, port, database, username, password, tls_mode, options) {
+  case
+    mysql_open_raw(host, port, database, username, password, tls_mode, options)
+  {
     Ok(inner) -> Ok(Connection(inner:))
     Error(error) -> Error(error)
   }
