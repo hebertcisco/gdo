@@ -825,13 +825,7 @@ fn mysql_test_config() -> Result(connection.ConnectionConfig, Nil) {
   {
     Ok(host), Ok(database), Ok(username), Ok(password) ->
       Ok(
-        connection.mysql(
-          host,
-          mysql_test_port(),
-          database,
-          username,
-          password,
-        )
+        connection.mysql(host, mysql_test_port(), database, username, password)
         |> connection.with_option("connect_timeout", "2000")
         |> connection.with_option("query_timeout", "2000"),
       )
