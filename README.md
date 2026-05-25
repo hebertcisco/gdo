@@ -6,7 +6,7 @@
 
 It provides a small, functional API for:
 
-- opening SQLite connections
+- opening SQLite and MySQL connections
 - executing prepared statements
 - reading rows through typed decoders
 - running explicit transactions
@@ -16,6 +16,7 @@ It provides a small, functional API for:
 
 - idiomatic Gleam API
 - `Result`-based error handling
+- SQLite and MySQL drivers
 - positional and named parameters
 - prepared statement workflow
 - explicit transaction control
@@ -87,8 +88,9 @@ pub fn main() -> Result(Nil, Error) {
 
 ## Connection Workflow
 
-Use `gdo.open_sqlite` for the common path, or `connection.open` with
-`connection.sqlite_config` when you want to build the configuration explicitly.
+Use `gdo.open_sqlite` for embedded SQLite databases, or `gdo.open_mysql` for
+network MySQL connections. When you want to build the configuration explicitly,
+use `connection.open` with a driver-specific config helper.
 
 ```gleam
 import gdo
@@ -103,14 +105,34 @@ pub fn open_database() {
 }
 ```
 
-For one-shot calls there are root helpers:
+MySQL configuration follows the same shape, while using the shared server
+connection primitives under the hood:
+
+```gleam
+import gdo
+import gdo/connection
+
+pub fn open_mysql_database() {
+  let assert Ok(db) =
+    gdo.mysql_config("127.0.0.1", 3306, "app", "root", "secret")
+    |> connection.with_option("connect_timeout", "2000")
+    |> connection.open
+
+  assert connection.in_transaction(db) == False
+}
+```
+
+For one-shot calls there are root helpers for both drivers:
 
 - `gdo.exec_sqlite`
 - `gdo.query_one_sqlite`
 - `gdo.query_all_sqlite`
+- `gdo.exec_mysql`
+- `gdo.query_one_mysql`
+- `gdo.query_all_mysql`
 
-These helpers open a SQLite connection for the operation and return the typed
-result directly.
+These helpers open a connection for the operation and return the typed result
+directly.
 
 ## Statement Workflow
 
@@ -256,6 +278,25 @@ Current SQLite limitation:
   `decode.column_at`. The current SQLite path does not yet expose real column
   names from backend metadata, so rows returned from queries use synthetic
   column names internally.
+
+## MySQL Notes
+
+Current MySQL support includes:
+
+- network connection lifecycle
+- prepared execution through the shared statement API
+- reads through `query_one` and `query_all`
+- transaction operations
+- `last_insert_id`
+- driver error mapping with MySQL code and SQLSTATE when available
+
+Current MySQL limitations:
+
+- the first MySQL runtime path is Erlang-only
+- the JavaScript target returns an explicit unsupported-driver error for MySQL
+- named placeholders are rewritten to positional execution before reaching the
+  MySQL client runtime
+- multiple result sets are not exposed through the current `gdo` query API
 
 ## Contributing
 
