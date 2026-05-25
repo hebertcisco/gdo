@@ -1,5 +1,5 @@
 %%% --------------------------------------------------
-%%% @author OpenAI Codex
+%%% @author @hebertcisco <hebertcisco@outlook.com>
 %%% @doc Erlang ffi glue code for the gdo Gleam package.
 %%% @end
 %%% --------------------------------------------------
