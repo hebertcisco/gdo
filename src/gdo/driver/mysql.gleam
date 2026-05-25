@@ -10,7 +10,6 @@ import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
 import gleam/int
 import gleam/list
-import gleam/option
 import gleam/option.{type Option, None, Some}
 import gleam/string
 
@@ -478,7 +477,7 @@ fn connection_error(native_error: native.MySqlNativeError) -> Error {
   ConnectionError(
     message: message,
     sqlstate: sqlstate,
-    code: option.map(code, int.to_string),
+    code: code_to_string(code),
     details: [#("driver", "mysql")],
   )
 }
@@ -488,7 +487,7 @@ fn query_error_from_native(native_error: native.MySqlNativeError) -> Error {
   QueryError(
     message: message,
     sqlstate: sqlstate,
-    code: option.map(code, int.to_string),
+    code: code_to_string(code),
     details: [#("driver", "mysql")],
   )
 }
@@ -496,4 +495,11 @@ fn query_error_from_native(native_error: native.MySqlNativeError) -> Error {
 fn transaction_error_from_native(native_error: native.MySqlNativeError) -> Error {
   let native.MySqlNativeError(message:, ..) = native_error
   TransactionError(message: message)
+}
+
+fn code_to_string(code: Option(Int)) -> Option(String) {
+  case code {
+    Some(current_code) -> Some(int.to_string(current_code))
+    None -> None
+  }
 }
