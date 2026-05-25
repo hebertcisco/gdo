@@ -10,7 +10,6 @@ links = [
 [dependencies]
 gleam_stdlib = ">= 1.0.0 and < 2.0.0"
 sqlight = ">= 1.1.0 and < 2.0.0"
-parrot = ">= 2.2.1 and < 3.0.0"
 mysql = ">= 1.9.0 and < 2.0.0"
 
 [dev_dependencies]
