@@ -39,6 +39,33 @@ pub fn sqlite_config(database: String) -> ConnectionConfig {
   sqlite(database)
 }
 
+pub fn mysql(
+  host: String,
+  port: Int,
+  database: String,
+  username: String,
+  password: String,
+) -> ConnectionConfig {
+  server(
+    driver.MySql,
+    host,
+    port,
+    database,
+    username_and_password(username, password),
+    disable_tls(),
+  )
+}
+
+pub fn mysql_config(
+  host: String,
+  port: Int,
+  database: String,
+  username: String,
+  password: String,
+) -> ConnectionConfig {
+  mysql(host, port, database, username, password)
+}
+
 pub fn server(
   current_driver: driver.Driver,
   host: String,
@@ -108,13 +135,13 @@ pub fn config_options(config: ConnectionConfig) -> List(#(String, String)) {
 }
 
 pub fn open(config: ConnectionConfig) -> Result(Connection, Error) {
-  let ConnectionConfig(target:, driver: current_driver, ..) = config
+  let ConnectionConfig(target:, driver: current_driver, options:) = config
 
   case validate_target(target) {
     Ok(_) -> {
       let contract = registry.contract(current_driver)
 
-      case driver.connect(contract, target) {
+      case driver.connect(contract, target, options) {
         Ok(connection_state) ->
           Ok(Connection(
             config:,
