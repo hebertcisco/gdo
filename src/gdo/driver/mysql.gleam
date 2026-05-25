@@ -54,8 +54,7 @@ fn connect(
   case target {
     driver.ServerDatabase(network:) ->
       case network.authentication {
-        driver.NoAuthentication ->
-          open_connection(network, "", "", options)
+        driver.NoAuthentication -> open_connection(network, "", "", options)
         driver.UsernameAndPassword(username:, password:) ->
           open_connection(network, username, password, options)
       }
@@ -111,18 +110,24 @@ fn prepare(
   sql: String,
 ) -> Result(driver.DriverStatementState, Error) {
   let assert driver.MySqlConnectionState(connection:, ..) = connection_state
-  let NamedPlaceholderRewrite(sql:, parameter_order:) = rewrite_named_placeholders(
-    sql,
-  )
-  Ok(driver.MySqlStatementState(connection:, sql:, named_parameter_order: parameter_order))
+  let NamedPlaceholderRewrite(sql:, parameter_order:) =
+    rewrite_named_placeholders(sql)
+  Ok(driver.MySqlStatementState(
+    connection:,
+    sql:,
+    named_parameter_order: parameter_order,
+  ))
 }
 
 fn exec(
   statement_state: driver.DriverStatementState,
   params: List(value.Param),
 ) -> Result(result.ExecutionResult, Error) {
-  let assert driver.MySqlStatementState(connection:, sql:, named_parameter_order:) =
-    statement_state
+  let assert driver.MySqlStatementState(
+    connection:,
+    sql:,
+    named_parameter_order:,
+  ) = statement_state
 
   case mysql_arguments(params, named_parameter_order) {
     Ok(arguments) ->
@@ -139,8 +144,11 @@ fn query_all(
   statement_state: driver.DriverStatementState,
   params: List(value.Param),
 ) -> Result(result.QueryResult, Error) {
-  let assert driver.MySqlStatementState(connection:, sql:, named_parameter_order:) =
-    statement_state
+  let assert driver.MySqlStatementState(
+    connection:,
+    sql:,
+    named_parameter_order:,
+  ) = statement_state
 
   case mysql_arguments(params, named_parameter_order) {
     Ok(arguments) ->
@@ -218,7 +226,8 @@ fn decode_mysql_row(
           Ok(row.new(pair_columns(columns, decoded_values, [])))
         Error(error) -> Error(error)
       }
-    Error(_) -> Error(DecodeError("MySQL returned a row in an unsupported format."))
+    Error(_) ->
+      Error(DecodeError("MySQL returned a row in an unsupported format."))
   }
 }
 
@@ -230,11 +239,7 @@ fn pair_columns(
   case columns, values {
     [], [] -> list.reverse(acc)
     [column, ..rest_columns], [current_value, ..rest_values] ->
-      pair_columns(
-        rest_columns,
-        rest_values,
-        [#(column, current_value), ..acc],
-      )
+      pair_columns(rest_columns, rest_values, [#(column, current_value), ..acc])
     _, _ -> list.reverse(acc)
   }
 }
@@ -281,8 +286,7 @@ fn mysql_arguments(
   named_parameter_order: Option(List(String)),
 ) -> Result(List(value.DbValue), Error) {
   case named_parameter_order {
-    None ->
-      Ok(list.map(params, value.param_value))
+    None -> Ok(list.map(params, value.param_value))
 
     Some(parameter_order) ->
       parameter_order
@@ -296,12 +300,14 @@ fn lookup_named_param(
 ) -> Result(value.DbValue, Error) {
   case params {
     [] ->
-      Error(QueryError(
-        message: "Missing named parameter: " <> name,
-        sqlstate: None,
-        code: None,
-        details: [#("driver", "mysql"), #("parameter", name)],
-      ))
+      Error(
+        QueryError(
+          message: "Missing named parameter: " <> name,
+          sqlstate: None,
+          code: None,
+          details: [#("driver", "mysql"), #("parameter", name)],
+        ),
+      )
 
     [value.Named(current_name, current_value), ..rest] ->
       case current_name == name {
@@ -315,16 +321,10 @@ fn lookup_named_param(
 
 fn rewrite_named_placeholders(sql: String) -> NamedPlaceholderRewrite {
   let #(rewritten_sql, names) =
-    scan_named_placeholders(
-      string.to_graphemes(sql),
-      Normal,
-      [],
-      [],
-    )
+    scan_named_placeholders(string.to_graphemes(sql), Normal, [], [])
 
   case names {
-    [] ->
-      NamedPlaceholderRewrite(sql: rewritten_sql, parameter_order: None)
+    [] -> NamedPlaceholderRewrite(sql: rewritten_sql, parameter_order: None)
     _ ->
       NamedPlaceholderRewrite(
         sql: rewritten_sql,
@@ -492,7 +492,9 @@ fn query_error_from_native(native_error: native.MySqlNativeError) -> Error {
   )
 }
 
-fn transaction_error_from_native(native_error: native.MySqlNativeError) -> Error {
+fn transaction_error_from_native(
+  native_error: native.MySqlNativeError,
+) -> Error {
   let native.MySqlNativeError(message:, ..) = native_error
   TransactionError(message: message)
 }
