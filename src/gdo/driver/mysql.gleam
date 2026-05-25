@@ -10,6 +10,7 @@ import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
 import gleam/int
 import gleam/list
+import gleam/option
 import gleam/option.{type Option, None, Some}
 import gleam/string
 
@@ -98,7 +99,7 @@ fn open_connection(
 }
 
 fn close(connection_state: driver.DriverConnectionState) -> Result(Nil, Error) {
-  let driver.MySqlConnectionState(connection:, ..) = connection_state
+  let assert driver.MySqlConnectionState(connection:, ..) = connection_state
 
   case native.mysql_close(connection) {
     Ok(_) -> Ok(Nil)
@@ -110,18 +111,18 @@ fn prepare(
   connection_state: driver.DriverConnectionState,
   sql: String,
 ) -> Result(driver.DriverStatementState, Error) {
-  let driver.MySqlConnectionState(connection:, ..) = connection_state
+  let assert driver.MySqlConnectionState(connection:, ..) = connection_state
   let NamedPlaceholderRewrite(sql:, parameter_order:) = rewrite_named_placeholders(
     sql,
   )
-  Ok(driver.MySqlStatementState(connection:, sql:, named_parameter_order:))
+  Ok(driver.MySqlStatementState(connection:, sql:, named_parameter_order: parameter_order))
 }
 
 fn exec(
   statement_state: driver.DriverStatementState,
   params: List(value.Param),
 ) -> Result(result.ExecutionResult, Error) {
-  let driver.MySqlStatementState(connection:, sql:, named_parameter_order:) =
+  let assert driver.MySqlStatementState(connection:, sql:, named_parameter_order:) =
     statement_state
 
   case mysql_arguments(params, named_parameter_order) {
@@ -139,7 +140,7 @@ fn query_all(
   statement_state: driver.DriverStatementState,
   params: List(value.Param),
 ) -> Result(result.QueryResult, Error) {
-  let driver.MySqlStatementState(connection:, sql:, named_parameter_order:) =
+  let assert driver.MySqlStatementState(connection:, sql:, named_parameter_order:) =
     statement_state
 
   case mysql_arguments(params, named_parameter_order) {
@@ -155,7 +156,7 @@ fn query_all(
 fn begin(
   connection_state: driver.DriverConnectionState,
 ) -> Result(driver.DriverConnectionState, Error) {
-  let driver.MySqlConnectionState(connection:, ..) = connection_state
+  let assert driver.MySqlConnectionState(connection:, ..) = connection_state
 
   case native.mysql_exec("BEGIN", on: connection, with: []) {
     Ok(_) -> Ok(connection_state)
@@ -166,7 +167,7 @@ fn begin(
 fn commit(
   connection_state: driver.DriverConnectionState,
 ) -> Result(driver.DriverConnectionState, Error) {
-  let driver.MySqlConnectionState(connection:, ..) = connection_state
+  let assert driver.MySqlConnectionState(connection:, ..) = connection_state
 
   case native.mysql_exec("COMMIT", on: connection, with: []) {
     Ok(_) -> Ok(connection_state)
@@ -177,7 +178,7 @@ fn commit(
 fn rollback(
   connection_state: driver.DriverConnectionState,
 ) -> Result(driver.DriverConnectionState, Error) {
-  let driver.MySqlConnectionState(connection:, ..) = connection_state
+  let assert driver.MySqlConnectionState(connection:, ..) = connection_state
 
   case native.mysql_exec("ROLLBACK", on: connection, with: []) {
     Ok(_) -> Ok(connection_state)
@@ -188,7 +189,7 @@ fn rollback(
 fn last_insert_id(
   connection_state: driver.DriverConnectionState,
 ) -> Option(Int) {
-  let driver.MySqlConnectionState(connection:, ..) = connection_state
+  let assert driver.MySqlConnectionState(connection:, ..) = connection_state
 
   case native.mysql_last_insert_id(on: connection) {
     Ok(last_insert_id) -> last_insert_id
