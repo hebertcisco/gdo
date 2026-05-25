@@ -36,6 +36,7 @@ gleam test
 
 Please make sure your pull request:
 
+- targets the `develop` branch
 - explains the problem being solved
 - describes the approach taken
 - includes tests where appropriate

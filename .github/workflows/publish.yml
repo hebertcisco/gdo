@@ -1,0 +1,42 @@
+name: publish
+
+on:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          gleam-version: "1.16.0"
+          rebar3-version: "3"
+
+      - name: Validate release version
+        if: github.event_name == 'release'
+        run: |
+          PACKAGE_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' gleam.toml)"
+          RELEASE_TAG="${GITHUB_REF_NAME#v}"
+
+          if [ "$PACKAGE_VERSION" != "$RELEASE_TAG" ]; then
+            echo "Release tag $GITHUB_REF_NAME does not match gleam.toml version $PACKAGE_VERSION"
+            exit 1
+          fi
+
+      - run: gleam deps download
+      - run: gleam build
+      - run: gleam test
+      - run: gleam format --check src test
+
+      - name: Publish to Hex
+        env:
+          HEXPM_API_KEY: ${{ secrets.HEXPM_API_KEY }}
+        run: gleam publish -y

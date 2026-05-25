@@ -1,9 +1,9 @@
 import gdo/error.{type Error}
+import gdo/native
 import gdo/result
 import gdo/value.{type Param}
 import gleam/list
 import gleam/option.{type Option}
-import sqlight
 
 pub type Capability {
   SupportsTransactions
@@ -49,13 +49,13 @@ pub type ConnectionTarget {
 pub type DriverConnectionState {
   SqliteConnectionState(
     database: String,
-    connection: sqlight.Connection,
+    connection: native.Connection,
     last_insert_id: Option(Int),
   )
 }
 
 pub type DriverStatementState {
-  SqliteStatementState(connection: sqlight.Connection, sql: String)
+  SqliteStatementState(connection: native.Connection, sql: String)
 }
 
 pub type DriverContract {
