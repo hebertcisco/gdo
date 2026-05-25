@@ -2,6 +2,7 @@ import gdo/driver
 import gdo/error.{
   type Error, ConnectionError, DecodeError, QueryError, TransactionError,
 }
+import gdo/native
 import gdo/result
 import gdo/row
 import gdo/value
@@ -39,7 +40,7 @@ fn connect(
 ) -> Result(driver.DriverConnectionState, Error) {
   case target {
     driver.EmbeddedDatabase(path:) ->
-      case sqlight.open(path) {
+      case native.sqlite_open(path) {
         Ok(connection) ->
           Ok(driver.SqliteConnectionState(
             database: path,
@@ -64,7 +65,7 @@ fn connect(
 fn close(connection_state: driver.DriverConnectionState) -> Result(Nil, Error) {
   let driver.SqliteConnectionState(connection:, ..) = connection_state
 
-  case sqlight.close(connection) {
+  case native.sqlite_close(connection) {
     Ok(_) -> Ok(Nil)
     Error(error) -> Error(connection_error(error))
   }
@@ -86,22 +87,15 @@ fn exec(
 
   case to_sqlight_values(params) {
     [] ->
-      case sqlight.exec(sql, on: connection) {
+      case native.sqlite_exec(sql, on: connection) {
         Ok(_) -> execution_result(connection)
-        Error(error) -> Error(query_error(error))
+        Error(error) -> Error(query_error_from_native(error))
       }
 
     arguments ->
-      case
-        sqlight.query(
-          sql,
-          on: connection,
-          with: arguments,
-          expecting: decode.success(Nil),
-        )
-      {
+      case native.sqlite_query(sql, on: connection, with: arguments) {
         Ok(_) -> execution_result(connection)
-        Error(error) -> Error(query_error(error))
+        Error(error) -> Error(query_error_from_native(error))
       }
   }
 }
@@ -113,19 +107,14 @@ fn query_all(
   let driver.SqliteStatementState(connection:, sql:) = statement_state
 
   case
-    sqlight.query(
-      sql,
-      on: connection,
-      with: to_sqlight_values(params),
-      expecting: decode.dynamic,
-    )
+    native.sqlite_query(sql, on: connection, with: to_sqlight_values(params))
   {
     Ok(rows) ->
       case list.try_map(rows, decode_sqlite_row) {
         Ok(decoded_rows) -> Ok(result.query_result(decoded_rows))
         Error(error) -> Error(error)
       }
-    Error(error) -> Error(query_error(error))
+    Error(error) -> Error(query_error_from_native(error))
   }
 }
 
@@ -134,9 +123,9 @@ fn begin(
 ) -> Result(driver.DriverConnectionState, Error) {
   let driver.SqliteConnectionState(connection:, ..) = connection_state
 
-  case sqlight.exec("BEGIN", on: connection) {
+  case native.sqlite_exec("BEGIN", on: connection) {
     Ok(_) -> Ok(connection_state)
-    Error(error) -> Error(transaction_error(error))
+    Error(error) -> Error(transaction_error_from_native(error))
   }
 }
 
@@ -145,9 +134,9 @@ fn commit(
 ) -> Result(driver.DriverConnectionState, Error) {
   let driver.SqliteConnectionState(connection:, ..) = connection_state
 
-  case sqlight.exec("COMMIT", on: connection) {
+  case native.sqlite_exec("COMMIT", on: connection) {
     Ok(_) -> Ok(connection_state)
-    Error(error) -> Error(transaction_error(error))
+    Error(error) -> Error(transaction_error_from_native(error))
   }
 }
 
@@ -156,9 +145,9 @@ fn rollback(
 ) -> Result(driver.DriverConnectionState, Error) {
   let driver.SqliteConnectionState(connection:, ..) = connection_state
 
-  case sqlight.exec("ROLLBACK", on: connection) {
+  case native.sqlite_exec("ROLLBACK", on: connection) {
     Ok(_) -> Ok(connection_state)
-    Error(error) -> Error(transaction_error(error))
+    Error(error) -> Error(transaction_error_from_native(error))
   }
 }
 
@@ -193,33 +182,35 @@ fn to_sqlight_value(db_value: value.DbValue) -> sqlight.Value {
   }
 }
 
-fn connection_error(sqlight_error: sqlight.Error) -> Error {
-  let sqlight.SqlightError(code:, message:, offset:) = sqlight_error
+fn connection_error(native_error: native.SqliteNativeError) -> Error {
+  let native.SqliteNativeError(code:, message:, offset:) = native_error
   ConnectionError(
     message: message,
     sqlstate: None,
-    code: Some(int.to_string(sqlight.error_code_to_int(code))),
+    code: Some(int.to_string(code)),
     details: sqlite_error_details(code, offset),
   )
 }
 
-fn query_error(sqlight_error: sqlight.Error) -> Error {
-  let sqlight.SqlightError(code:, message:, offset:) = sqlight_error
+fn query_error_from_native(native_error: native.SqliteNativeError) -> Error {
+  let native.SqliteNativeError(code:, message:, offset:) = native_error
   QueryError(
     message: message,
     sqlstate: None,
-    code: Some(int.to_string(sqlight.error_code_to_int(code))),
+    code: Some(int.to_string(code)),
     details: sqlite_error_details(code, offset),
   )
 }
 
-fn transaction_error(sqlight_error: sqlight.Error) -> Error {
-  let sqlight.SqlightError(message:, ..) = sqlight_error
+fn transaction_error_from_native(
+  native_error: native.SqliteNativeError,
+) -> Error {
+  let native.SqliteNativeError(message:, ..) = native_error
   TransactionError(message: message)
 }
 
 fn execution_result(
-  connection: sqlight.Connection,
+  connection: native.Connection,
 ) -> Result(result.ExecutionResult, Error) {
   case read_rows_affected(connection) {
     Ok(rows_affected) ->
@@ -232,37 +223,46 @@ fn execution_result(
   }
 }
 
-fn read_rows_affected(connection: sqlight.Connection) -> Result(Int, Error) {
-  case
-    sqlight.query(
-      "select changes()",
-      on: connection,
-      with: [],
-      expecting: decode.at([0], decode.int),
-    )
-  {
-    Ok([rows_affected]) -> Ok(rows_affected)
-    Ok(_) -> Error(DecodeError("SQLite did not return a changes() value."))
-    Error(error) -> Error(query_error(error))
+fn read_rows_affected(connection: native.Connection) -> Result(Int, Error) {
+  case native.sqlite_query("select changes()", on: connection, with: []) {
+    Ok(rows) ->
+      case list.first(rows) {
+        Ok(current_row) ->
+          case decode.run(current_row, decode.at([0], decode.int)) {
+            Ok(rows_affected) -> Ok(rows_affected)
+            Error(_) ->
+              Error(DecodeError("SQLite did not return a changes() value."))
+          }
+        Error(_) ->
+          Error(DecodeError("SQLite did not return a changes() value."))
+      }
+    Error(error) -> Error(query_error_from_native(error))
   }
 }
 
 fn read_last_insert_id(
-  connection: sqlight.Connection,
+  connection: native.Connection,
 ) -> Result(Option(Int), Error) {
   case
-    sqlight.query(
-      "select last_insert_rowid()",
-      on: connection,
-      with: [],
-      expecting: decode.at([0], decode.int),
-    )
+    native.sqlite_query("select last_insert_rowid()", on: connection, with: [])
   {
-    Ok([0]) -> Ok(None)
-    Ok([last_insert_id]) -> Ok(Some(last_insert_id))
-    Ok(_) ->
-      Error(DecodeError("SQLite did not return a last_insert_rowid() value."))
-    Error(error) -> Error(query_error(error))
+    Ok(rows) ->
+      case list.first(rows) {
+        Ok(current_row) ->
+          case decode.run(current_row, decode.at([0], decode.int)) {
+            Ok(0) -> Ok(None)
+            Ok(last_insert_id) -> Ok(Some(last_insert_id))
+            Error(_) ->
+              Error(DecodeError(
+                "SQLite did not return a last_insert_rowid() value.",
+              ))
+          }
+        Error(_) ->
+          Error(DecodeError(
+            "SQLite did not return a last_insert_rowid() value.",
+          ))
+      }
+    Error(error) -> Error(query_error_from_native(error))
   }
 }
 
@@ -331,13 +331,10 @@ fn column_name(index: Int) -> String {
   "column_" <> int.to_string(index)
 }
 
-fn sqlite_error_details(
-  code: sqlight.ErrorCode,
-  offset: Int,
-) -> List(#(String, String)) {
+fn sqlite_error_details(code: Int, offset: Int) -> List(#(String, String)) {
   [
     #("driver", "sqlite"),
-    #("driver_code", int.to_string(sqlight.error_code_to_int(code))),
+    #("driver_code", int.to_string(code)),
     #("error_offset", int.to_string(offset)),
   ]
 }
