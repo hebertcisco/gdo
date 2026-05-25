@@ -53,10 +53,7 @@ pub type DriverConnectionState {
     connection: native.Connection,
     last_insert_id: Option(Int),
   )
-  MySqlConnectionState(
-    endpoint: NetworkEndpoint,
-    connection: native.Connection,
-  )
+  MySqlConnectionState(endpoint: NetworkEndpoint, connection: native.Connection)
 }
 
 pub type DriverStatementState {
