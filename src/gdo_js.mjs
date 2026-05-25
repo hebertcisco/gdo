@@ -1,6 +1,6 @@
 // @ts-check
 
-import { List, Ok, Error as GError } from "./gleam.mjs";
+import { List, None, Ok, Error as GError } from "./gleam.mjs";
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
 import * as $native from "./gdo/native.mjs";
 
@@ -66,4 +66,42 @@ function sqliteError(error) {
       Number.isInteger(error.offset) ? error.offset : -1,
     ),
   );
+}
+
+function mysqlUnsupported() {
+  return new GError(
+    new $native.MySqlNativeError(
+      None,
+      None,
+      "MySQL is only supported on the Erlang target in the first pass.",
+    ),
+  );
+}
+
+export function mysqlOpen(
+  _host,
+  _port,
+  _database,
+  _username,
+  _password,
+  _tlsMode,
+  _options,
+) {
+  return mysqlUnsupported();
+}
+
+export function mysqlClose(_connection) {
+  return mysqlUnsupported();
+}
+
+export function mysqlExec(_sql, _connection, _arguments) {
+  return mysqlUnsupported();
+}
+
+export function mysqlQuery(_sql, _connection, _arguments) {
+  return mysqlUnsupported();
+}
+
+export function mysqlLastInsertId(_connection) {
+  return mysqlUnsupported();
 }

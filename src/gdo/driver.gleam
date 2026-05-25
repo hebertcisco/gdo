@@ -18,6 +18,7 @@ pub type Capability {
 
 pub type Driver {
   Sqlite
+  MySql
 }
 
 pub type Authentication {
@@ -52,15 +53,22 @@ pub type DriverConnectionState {
     connection: native.Connection,
     last_insert_id: Option(Int),
   )
+  MySqlConnectionState(endpoint: NetworkEndpoint, connection: native.Connection)
 }
 
 pub type DriverStatementState {
   SqliteStatementState(connection: native.Connection, sql: String)
+  MySqlStatementState(
+    connection: native.Connection,
+    sql: String,
+    named_parameter_order: Option(List(String)),
+  )
 }
 
 pub type DriverContract {
   DriverContract(
-    connect: fn(ConnectionTarget) -> Result(DriverConnectionState, Error),
+    connect: fn(ConnectionTarget, List(#(String, String))) ->
+      Result(DriverConnectionState, Error),
     close: fn(DriverConnectionState) -> Result(Nil, Error),
     prepare: fn(DriverConnectionState, String) ->
       Result(DriverStatementState, Error),
@@ -78,6 +86,7 @@ pub type DriverContract {
 pub fn name(driver: Driver) -> String {
   case driver {
     Sqlite -> "sqlite"
+    MySql -> "mysql"
   }
 }
 
@@ -89,6 +98,16 @@ pub fn capabilities(driver: Driver) -> List(Capability) {
       SupportsPositionalParameters,
       SupportsNamedParameters,
       SupportsEmbeddedConnections,
+    ]
+
+    MySql -> [
+      SupportsTransactions,
+      SupportsLastInsertId,
+      SupportsPositionalParameters,
+      SupportsNamedParameters,
+      SupportsNetworkConnections,
+      SupportsAuthentication,
+      SupportsTlsConfiguration,
     ]
   }
 }
@@ -114,9 +133,10 @@ pub fn supports(driver: Driver, capability capability: Capability) -> Bool {
 pub fn connect(
   contract: DriverContract,
   target: ConnectionTarget,
+  options: List(#(String, String)),
 ) -> Result(DriverConnectionState, Error) {
   let DriverContract(connect:, ..) = contract
-  connect(target)
+  connect(target, options)
 }
 
 pub fn prepare(

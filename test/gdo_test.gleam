@@ -1,3 +1,4 @@
+import envoy
 import gdo
 import gdo/connection
 import gdo/decode
@@ -7,6 +8,7 @@ import gdo/result
 import gdo/row
 import gdo/statement
 import gdo/value.{Int, Named, Null, Positional, String}
+import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
 import gleeunit
@@ -34,6 +36,28 @@ pub fn sqlite_config_aliases_test() {
   assert connection.sqlite_config(":memory:") == connection.sqlite(":memory:")
   assert connection.config_driver(config) == driver.Sqlite
   assert connection.config_target(config) == driver.EmbeddedDatabase(":memory:")
+}
+
+pub fn mysql_config_aliases_test() {
+  let config =
+    gdo.mysql_config("db.internal", 3306, "app", "root", "secret")
+    |> connection.with_option("connect_timeout", "2000")
+
+  assert connection.mysql_config("db.internal", 3306, "app", "root", "secret")
+    == connection.mysql("db.internal", 3306, "app", "root", "secret")
+  assert connection.config_driver(config) == driver.MySql
+  assert connection.config_options(config) == [#("connect_timeout", "2000")]
+  assert connection.config_target(config)
+    == driver.ServerDatabase(driver.NetworkEndpoint(
+      host: "db.internal",
+      port: 3306,
+      database: "app",
+      authentication: driver.UsernameAndPassword(
+        username: "root",
+        password: "secret",
+      ),
+      tls: driver.DisableTls,
+    ))
 }
 
 pub fn server_connection_config_building_test() {
@@ -100,6 +124,18 @@ pub fn sqlite_driver_capabilities_foundation_test() {
   assert list.contains(capabilities, driver.SupportsLastInsertId)
   assert list.contains(capabilities, driver.SupportsEmbeddedConnections)
   assert driver.supports(driver.Sqlite, driver.SupportsNetworkConnections)
+    == False
+}
+
+pub fn mysql_driver_capabilities_foundation_test() {
+  let capabilities = driver.capabilities(driver.MySql)
+
+  assert list.contains(capabilities, driver.SupportsTransactions)
+  assert list.contains(capabilities, driver.SupportsLastInsertId)
+  assert list.contains(capabilities, driver.SupportsNetworkConnections)
+  assert list.contains(capabilities, driver.SupportsAuthentication)
+  assert list.contains(capabilities, driver.SupportsTlsConfiguration)
+  assert driver.supports(driver.MySql, driver.SupportsEmbeddedConnections)
     == False
 }
 
@@ -680,8 +716,133 @@ pub fn sqlite_file_database_failure_integration_test() {
   assert error.code(err) != None
 }
 
+pub fn mysql_roundtrip_integration_test() {
+  case mysql_test_config() {
+    Ok(config) -> {
+      let assert Ok(conn) = connection.open(config)
+      let assert Ok(_) =
+        connection.exec(conn, "drop table if exists gdo_issue18_users", [])
+      let assert Ok(_) =
+        connection.exec(
+          conn,
+          "create table gdo_issue18_users (id integer primary key auto_increment, email varchar(255) not null unique, active integer not null)",
+          [],
+        )
+      let assert Ok(exec_result) =
+        connection.exec(
+          conn,
+          "insert into gdo_issue18_users (email, active) values (:email, :active)",
+          [Named("email", String("ana@example.com")), Named("active", Int(1))],
+        )
+      let assert Some(last_insert_id) = result.last_insert_id(exec_result)
+      let assert Ok(Some(current_row)) =
+        connection.query_one(
+          conn,
+          "select id, email, active from gdo_issue18_users where email = :email or email = :email",
+          [Named("email", String("ana@example.com"))],
+        )
+
+      assert result.rows_affected(exec_result) == 1
+      assert connection.last_insert_id(conn) == Some(last_insert_id)
+      assert row.get(current_row, "email") == Ok(String("ana@example.com"))
+      assert row.get(current_row, "active") == Ok(Int(1))
+      assert connection.close(conn) == Ok(Nil)
+    }
+    Error(_) -> Nil
+  }
+}
+
+pub fn mysql_transactions_and_errors_integration_test() {
+  case mysql_test_config() {
+    Ok(config) -> {
+      let assert Ok(conn) = connection.open(config)
+      let assert Ok(_) =
+        connection.exec(conn, "drop table if exists gdo_issue18_ledger", [])
+      let assert Ok(_) =
+        connection.exec(
+          conn,
+          "create table gdo_issue18_ledger (id integer primary key auto_increment, email varchar(255) not null unique, note text not null)",
+          [],
+        )
+      let assert Ok(conn) = connection.begin(conn)
+      let assert Ok(_) =
+        connection.exec(
+          conn,
+          "insert into gdo_issue18_ledger (email, note) values (?, ?)",
+          [
+            Positional(String("committed@example.com")),
+            Positional(String("committed")),
+          ],
+        )
+      let assert Ok(conn) = connection.commit(conn)
+      let assert Ok(conn) = connection.begin(conn)
+      let assert Ok(_) =
+        connection.exec(
+          conn,
+          "insert into gdo_issue18_ledger (email, note) values (?, ?)",
+          [
+            Positional(String("rolled-back@example.com")),
+            Positional(String("rolled back")),
+          ],
+        )
+      let assert Ok(conn) = connection.rollback(conn)
+      let assert Error(err) =
+        connection.exec(
+          conn,
+          "insert into gdo_issue18_ledger (email, note) values (?, ?)",
+          [
+            Positional(String("committed@example.com")),
+            Positional(String("duplicate")),
+          ],
+        )
+      let assert Ok(query_result) =
+        connection.query_all(
+          conn,
+          "select email, note from gdo_issue18_ledger order by id",
+          [],
+        )
+
+      assert result.row_count(query_result) == 1
+      let assert error.QueryError(..) = err
+      assert error.code(err) != None
+      assert error.sqlstate(err) != None
+      assert connection.close(conn) == Ok(Nil)
+    }
+    Error(_) -> Nil
+  }
+}
+
 fn sqlite_test_database(name: String) -> String {
   "/tmp/gdo-" <> name <> ".sqlite"
+}
+
+fn mysql_test_config() -> Result(connection.ConnectionConfig, Nil) {
+  case
+    envoy.get("GDO_MYSQL_TEST_HOST"),
+    envoy.get("GDO_MYSQL_TEST_DATABASE"),
+    envoy.get("GDO_MYSQL_TEST_USERNAME"),
+    envoy.get("GDO_MYSQL_TEST_PASSWORD")
+  {
+    Ok(host), Ok(database), Ok(username), Ok(password) ->
+      Ok(
+        connection.mysql(host, mysql_test_port(), database, username, password)
+        |> connection.with_option("connect_timeout", "2000")
+        |> connection.with_option("query_timeout", "2000"),
+      )
+
+    _, _, _, _ -> Error(Nil)
+  }
+}
+
+fn mysql_test_port() -> Int {
+  case envoy.get("GDO_MYSQL_TEST_PORT") {
+    Ok(value) ->
+      case int.parse(value) {
+        Ok(port) -> port
+        Error(_) -> 3306
+      }
+    Error(_) -> 3306
+  }
 }
 
 fn assert_driver_contract_conformance(config: connection.ConnectionConfig) {

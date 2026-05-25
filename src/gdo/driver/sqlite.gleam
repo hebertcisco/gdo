@@ -37,6 +37,7 @@ pub fn contract() -> driver.DriverContract {
 
 fn connect(
   target: driver.ConnectionTarget,
+  _options: List(#(String, String)),
 ) -> Result(driver.DriverConnectionState, Error) {
   case target {
     driver.EmbeddedDatabase(path:) ->
@@ -63,7 +64,7 @@ fn connect(
 }
 
 fn close(connection_state: driver.DriverConnectionState) -> Result(Nil, Error) {
-  let driver.SqliteConnectionState(connection:, ..) = connection_state
+  let assert driver.SqliteConnectionState(connection:, ..) = connection_state
 
   case native.sqlite_close(connection) {
     Ok(_) -> Ok(Nil)
@@ -75,7 +76,7 @@ fn prepare(
   connection_state: driver.DriverConnectionState,
   sql: String,
 ) -> Result(driver.DriverStatementState, Error) {
-  let driver.SqliteConnectionState(connection:, ..) = connection_state
+  let assert driver.SqliteConnectionState(connection:, ..) = connection_state
   Ok(driver.SqliteStatementState(connection:, sql:))
 }
 
@@ -83,7 +84,7 @@ fn exec(
   statement_state: driver.DriverStatementState,
   params: List(value.Param),
 ) -> Result(result.ExecutionResult, Error) {
-  let driver.SqliteStatementState(connection:, sql:) = statement_state
+  let assert driver.SqliteStatementState(connection:, sql:) = statement_state
 
   case to_sqlight_values(params) {
     [] ->
@@ -104,7 +105,7 @@ fn query_all(
   statement_state: driver.DriverStatementState,
   params: List(value.Param),
 ) -> Result(result.QueryResult, Error) {
-  let driver.SqliteStatementState(connection:, sql:) = statement_state
+  let assert driver.SqliteStatementState(connection:, sql:) = statement_state
 
   case
     native.sqlite_query(sql, on: connection, with: to_sqlight_values(params))
@@ -121,7 +122,7 @@ fn query_all(
 fn begin(
   connection_state: driver.DriverConnectionState,
 ) -> Result(driver.DriverConnectionState, Error) {
-  let driver.SqliteConnectionState(connection:, ..) = connection_state
+  let assert driver.SqliteConnectionState(connection:, ..) = connection_state
 
   case native.sqlite_exec("BEGIN", on: connection) {
     Ok(_) -> Ok(connection_state)
@@ -132,7 +133,7 @@ fn begin(
 fn commit(
   connection_state: driver.DriverConnectionState,
 ) -> Result(driver.DriverConnectionState, Error) {
-  let driver.SqliteConnectionState(connection:, ..) = connection_state
+  let assert driver.SqliteConnectionState(connection:, ..) = connection_state
 
   case native.sqlite_exec("COMMIT", on: connection) {
     Ok(_) -> Ok(connection_state)
@@ -143,7 +144,7 @@ fn commit(
 fn rollback(
   connection_state: driver.DriverConnectionState,
 ) -> Result(driver.DriverConnectionState, Error) {
-  let driver.SqliteConnectionState(connection:, ..) = connection_state
+  let assert driver.SqliteConnectionState(connection:, ..) = connection_state
 
   case native.sqlite_exec("ROLLBACK", on: connection) {
     Ok(_) -> Ok(connection_state)
@@ -154,7 +155,7 @@ fn rollback(
 fn last_insert_id(
   connection_state: driver.DriverConnectionState,
 ) -> Option(Int) {
-  let driver.SqliteConnectionState(connection:, ..) = connection_state
+  let assert driver.SqliteConnectionState(connection:, ..) = connection_state
 
   case read_last_insert_id(connection) {
     Ok(last_insert_id) -> last_insert_id
